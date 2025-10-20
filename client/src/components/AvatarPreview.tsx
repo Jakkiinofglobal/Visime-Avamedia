@@ -39,6 +39,10 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const virtualCameraStreamRef = useRef<MediaStream | null>(null);
+  const audioRafIdRef = useRef<number | null>(null);
+  const isRecordingRef = useRef(false);
+  const isProcessingRef = useRef(false);
+  const lastSoundTimeRef = useRef(0);
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -326,6 +330,10 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
   useEffect(() => {
     return () => {
+      isRecordingRef.current = false;
+      if (audioRafIdRef.current) {
+        cancelAnimationFrame(audioRafIdRef.current);
+      }
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -339,16 +347,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   }, []);
 
   useEffect(() => {
-    if (isRecording) {
-      const interval = setInterval(() => {
-        const visemes = Object.keys(VISEME_MAP);
-        setCurrentViseme(visemes[Math.floor(Math.random() * visemes.length)]);
-        const newLatency = Math.floor(Math.random() * 200) + 300;
-        setLatency(newLatency);
-        onLatencyChange?.(newLatency);
-      }, 200);
-      return () => clearInterval(interval);
-    } else {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
+
+  useEffect(() => {
+    if (!isRecording) {
       setLatency(0);
       onLatencyChange?.(0);
     }
@@ -356,8 +359,14 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
   const handleMicToggle = async () => {
     if (isRecording) {
+      isRecordingRef.current = false;
       setIsRecording(false);
       onMicStatusChange?.(false);
+      
+      if (audioRafIdRef.current) {
+        cancelAnimationFrame(audioRafIdRef.current);
+        audioRafIdRef.current = null;
+      }
       
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach(track => track.stop());
@@ -382,17 +391,24 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       analyser.fftSize = 256;
       source.connect(analyser);
 
+      isRecordingRef.current = true;
       setIsRecording(true);
       onMicStatusChange?.(true);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
       const checkAudio = () => {
-        if (!isRecording) return;
+        if (!isRecordingRef.current) return;
+        
+        if (isProcessingRef.current) {
+          audioRafIdRef.current = requestAnimationFrame(checkAudio);
+          return;
+        }
         
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
         
         if (average > 20) {
+          lastSoundTimeRef.current = Date.now();
           const visemeKeys = Object.keys(VISEME_MAP);
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
           setCurrentViseme(randomViseme);
@@ -400,12 +416,15 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           const newLatency = Math.floor(Math.random() * 200) + 280;
           setLatency(newLatency);
           onLatencyChange?.(newLatency);
+        } else if (Date.now() - lastSoundTimeRef.current > 500) {
+          setCurrentViseme("V2");
+          setLatency(0);
+          onLatencyChange?.(0);
         }
         
-        if (mediaStreamRef.current?.active) {
-          requestAnimationFrame(checkAudio);
-        }
+        audioRafIdRef.current = requestAnimationFrame(checkAudio);
       };
+      lastSoundTimeRef.current = Date.now();
       checkAudio();
 
       toast({
@@ -422,8 +441,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     }
   };
 
-  const handleVirtualCameraToggle = () => {
-    if (virtualCameraActive) {
+  const handleVirtualCameraToggle = (checked: boolean) => {
+    if (!checked) {
       if (virtualCameraStreamRef.current) {
         virtualCameraStreamRef.current.getTracks().forEach(track => track.stop());
         virtualCameraStreamRef.current = null;
@@ -432,7 +451,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       onVirtualCameraChange?.(false);
       toast({
         title: "Virtual camera stopped",
-        description: "Canvas stream is no longer available for capture",
+        description: "Browser Source URL is no longer active",
       });
     } else {
       if (!canvasRef.current) {
@@ -452,7 +471,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         
         toast({
           title: "Virtual camera active",
-          description: "Canvas is now streaming at 30 FPS. Use OBS Browser Source to capture it.",
+          description: "Use the Browser Source URL below in OBS to capture the avatar stream",
         });
       } catch (error) {
         toast({
