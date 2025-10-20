@@ -8,6 +8,7 @@ export interface IStorage {
   getProject(id: string): Promise<Project | undefined>;
   getAllProjects(): Promise<Project[]>;
   updateProject(id: string, project: Partial<Project>): Promise<Project | undefined>;
+  deleteProject(id: string): Promise<boolean>;
   
   // Viseme clip operations
   createVisemeClip(clip: InsertVisemeClip): Promise<VisemeClip>;
@@ -73,6 +74,12 @@ export class DatabaseStorage implements IStorage {
 
   async deleteVisemeClip(id: string): Promise<boolean> {
     const result = await db.delete(visemeClips).where(eq(visemeClips.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async deleteProject(id: string): Promise<boolean> {
+    await db.delete(visemeClips).where(eq(visemeClips.projectId, id));
+    const result = await db.delete(projects).where(eq(projects.id, id)).returning();
     return result.length > 0;
   }
 }

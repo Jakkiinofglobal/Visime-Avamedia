@@ -16,9 +16,10 @@ interface AvatarPreviewProps {
   projectId?: string;
   onMicStatusChange?: (active: boolean) => void;
   onLatencyChange?: (latency: number) => void;
+  onVirtualCameraChange?: (active: boolean) => void;
 }
 
-export default function AvatarPreview({ onExport, projectId, onMicStatusChange, onLatencyChange }: AvatarPreviewProps) {
+export default function AvatarPreview({ onExport, projectId, onMicStatusChange, onLatencyChange, onVirtualCameraChange }: AvatarPreviewProps) {
   const [testText, setTestText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [removeGreenScreen, setRemoveGreenScreen] = useState(false);

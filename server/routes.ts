@@ -126,6 +126,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete project
+  app.delete("/api/projects/:id", async (req, res) => {
+    try {
+      const success = await storage.deleteProject(req.params.id);
+      if (!success) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Delete failed" });
+    }
+  });
+
   // Upload training audio
   app.post("/api/projects/:id/training-audio", upload.single("audio"), async (req, res) => {
     try {
