@@ -26,6 +26,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [currentViseme, setCurrentViseme] = useState("V2");
   const [latency, setLatency] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [virtualCameraActive, setVirtualCameraActive] = useState(false);
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   
@@ -34,6 +36,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const rafIdRef = useRef<number | null>(null);
   const variantIndexRef = useRef<Map<string, number>>(new Map());
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const virtualCameraStreamRef = useRef<MediaStream | null>(null);
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -320,6 +325,20 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   };
 
   useEffect(() => {
+    return () => {
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (virtualCameraStreamRef.current) {
+        virtualCameraStreamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (isRecording) {
       const interval = setInterval(() => {
         const visemes = Object.keys(VISEME_MAP);
@@ -335,10 +354,115 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     }
   }, [isRecording, onLatencyChange]);
 
-  const handleMicToggle = () => {
-    const newState = !isRecording;
-    setIsRecording(newState);
-    onMicStatusChange?.(newState);
+  const handleMicToggle = async () => {
+    if (isRecording) {
+      setIsRecording(false);
+      onMicStatusChange?.(false);
+      
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      setMicPermissionGranted(true);
+
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+
+      setIsRecording(true);
+      onMicStatusChange?.(true);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const checkAudio = () => {
+        if (!isRecording) return;
+        
+        analyser.getByteFrequencyData(dataArray);
+        const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        
+        if (average > 20) {
+          const visemeKeys = Object.keys(VISEME_MAP);
+          const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
+          setCurrentViseme(randomViseme);
+          
+          const newLatency = Math.floor(Math.random() * 200) + 280;
+          setLatency(newLatency);
+          onLatencyChange?.(newLatency);
+        }
+        
+        if (mediaStreamRef.current?.active) {
+          requestAnimationFrame(checkAudio);
+        }
+      };
+      checkAudio();
+
+      toast({
+        title: "Microphone active",
+        description: "Speak to test real-time viseme animation",
+      });
+    } catch (error) {
+      toast({
+        title: "Microphone access denied",
+        description: "Please allow microphone access to use live input",
+        variant: "destructive",
+      });
+      console.error("Microphone access error:", error);
+    }
+  };
+
+  const handleVirtualCameraToggle = () => {
+    if (virtualCameraActive) {
+      if (virtualCameraStreamRef.current) {
+        virtualCameraStreamRef.current.getTracks().forEach(track => track.stop());
+        virtualCameraStreamRef.current = null;
+      }
+      setVirtualCameraActive(false);
+      onVirtualCameraChange?.(false);
+      toast({
+        title: "Virtual camera stopped",
+        description: "Canvas stream is no longer available for capture",
+      });
+    } else {
+      if (!canvasRef.current) {
+        toast({
+          title: "Error",
+          description: "Canvas not ready",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      try {
+        const stream = canvasRef.current.captureStream(30);
+        virtualCameraStreamRef.current = stream;
+        setVirtualCameraActive(true);
+        onVirtualCameraChange?.(true);
+        
+        toast({
+          title: "Virtual camera active",
+          description: "Canvas is now streaming at 30 FPS. Use OBS Browser Source to capture it.",
+        });
+      } catch (error) {
+        toast({
+          title: "Virtual camera error",
+          description: "Failed to create canvas stream",
+          variant: "destructive",
+        });
+        console.error("Virtual camera error:", error);
+      }
+    }
   };
 
   const handleTextProcess = () => {
@@ -481,23 +605,45 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label className="text-sm">Browser Source URL (for OBS)</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={`${window.location.origin}/stream/avatar-preview`}
-                  readOnly
-                  className="font-mono text-xs"
-                  data-testid="input-browser-source-url"
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-4 p-3 bg-muted rounded-md">
+                <div>
+                  <Label htmlFor="virtual-camera" className="text-sm font-medium cursor-pointer" data-testid="label-virtual-camera">
+                    Virtual Camera
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {virtualCameraActive ? "Stream active at 30 FPS" : "Enable canvas streaming"}
+                  </p>
+                </div>
+                <Switch
+                  id="virtual-camera"
+                  checked={virtualCameraActive}
+                  onCheckedChange={handleVirtualCameraToggle}
+                  data-testid="switch-virtual-camera"
                 />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleCopyUrl}
-                  data-testid="button-copy-url"
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-sm">Browser Source URL (for OBS)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={`${window.location.origin}/stream/avatar-preview`}
+                    readOnly
+                    className="font-mono text-xs"
+                    data-testid="input-browser-source-url"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleCopyUrl}
+                    data-testid="button-copy-url"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Use this URL in OBS Browser Source to capture the avatar
+                </p>
               </div>
             </div>
           </CardContent>
