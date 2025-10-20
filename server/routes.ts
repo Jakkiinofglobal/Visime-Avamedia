@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
@@ -63,19 +63,14 @@ function textToPhonemes(text: string): string[] {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Serve uploaded files
+  // Serve uploaded files securely using express.static
   app.use("/uploads", (req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     next();
-  }, async (req, res, next) => {
-    const filePath = path.join(process.cwd(), "uploads", req.path);
-    try {
-      await fs.access(filePath);
-      res.sendFile(filePath);
-    } catch {
-      res.status(404).send("File not found");
-    }
-  });
+  }, express.static(path.join(process.cwd(), "uploads"), {
+    fallthrough: false,
+    dotfiles: "deny",
+  }));
 
   // Create project
   app.post("/api/projects", async (req, res) => {
@@ -103,15 +98,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(project);
   });
 
+  // Schema for safe project updates (prevents id overwrite)
+  const updateProjectSchema = z.object({
+    name: z.string().optional(),
+    fps: z.number().optional(),
+    resolution: z.string().optional(),
+    trainingAudioUrl: z.string().nullable().optional(),
+    phonemeTimeline: z.any().optional(),
+    restPositionClipUrl: z.string().nullable().optional(),
+    backgroundImageUrl: z.string().nullable().optional(),
+  });
+
   // Update project
   app.patch("/api/projects/:id", async (req, res) => {
     try {
-      const project = await storage.updateProject(req.params.id, req.body);
+      const validatedUpdates = updateProjectSchema.parse(req.body);
+      const project = await storage.updateProject(req.params.id, validatedUpdates);
       if (!project) {
         return res.status(404).json({ error: "Project not found" });
       }
       res.json(project);
     } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid update data", details: error.errors });
+      }
       res.status(400).json({ error: error instanceof Error ? error.message : "Invalid data" });
     }
   });
@@ -143,6 +153,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ audioUrl, timeline: mockTimeline, project });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Upload failed" });
+    }
+  });
+
+  // Upload rest position clip
+  app.post("/api/projects/:id/rest-position", upload.single("video"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const clipUrl = `/uploads/${req.file.filename}`;
+      
+      const project = await storage.updateProject(req.params.id, {
+        restPositionClipUrl: clipUrl,
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({ clipUrl, project });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Upload failed" });
+    }
+  });
+
+  // Upload background image
+  app.post("/api/projects/:id/background", upload.single("image"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const imageUrl = `/uploads/${req.file.filename}`;
+      
+      const project = await storage.updateProject(req.params.id, {
+        backgroundImageUrl: imageUrl,
+      });
+
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      res.json({ imageUrl, project });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Upload failed" });
     }

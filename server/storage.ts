@@ -1,5 +1,7 @@
 import { type Project, type InsertProject, type VisemeClip, type InsertVisemeClip } from "@shared/schema";
 import { randomUUID } from "crypto";
+import fs from "fs/promises";
+import path from "path";
 
 export interface IStorage {
   // Project operations
@@ -15,13 +17,56 @@ export interface IStorage {
   deleteVisemeClip(id: string): Promise<boolean>;
 }
 
+interface StorageData {
+  projects: [string, Project][];
+  visemeClips: [string, VisemeClip][];
+}
+
 export class MemStorage implements IStorage {
   private projects: Map<string, Project>;
   private visemeClips: Map<string, VisemeClip>;
+  private dataFilePath: string;
 
   constructor() {
     this.projects = new Map();
     this.visemeClips = new Map();
+    this.dataFilePath = path.join(process.cwd(), "uploads", "data.json");
+    this.loadFromFileSync();
+  }
+
+  private loadFromFileSync(): void {
+    try {
+      const fsSyncModule = require("fs");
+      const data = fsSyncModule.readFileSync(this.dataFilePath, "utf-8");
+      const parsed: StorageData = JSON.parse(data);
+      this.projects = new Map(parsed.projects);
+      this.visemeClips = new Map(parsed.visemeClips);
+      console.log("Storage loaded from file:", {
+        projects: this.projects.size,
+        clips: this.visemeClips.size,
+      });
+    } catch (error) {
+      console.log("No existing storage file found, starting fresh");
+    }
+  }
+
+  private async saveToFile(): Promise<void> {
+    try {
+      const fsSyncModule = require("fs");
+      const uploadsDir = path.join(process.cwd(), "uploads");
+      
+      if (!fsSyncModule.existsSync(uploadsDir)) {
+        await fs.mkdir(uploadsDir, { recursive: true });
+      }
+      
+      const data: StorageData = {
+        projects: Array.from(this.projects.entries()),
+        visemeClips: Array.from(this.visemeClips.entries()),
+      };
+      await fs.writeFile(this.dataFilePath, JSON.stringify(data, null, 2), "utf-8");
+    } catch (error) {
+      console.error("Failed to save storage to file:", error);
+    }
   }
 
   async createProject(insertProject: InsertProject): Promise<Project> {
@@ -33,8 +78,11 @@ export class MemStorage implements IStorage {
       resolution: insertProject.resolution ?? "1920x1080",
       trainingAudioUrl: insertProject.trainingAudioUrl ?? null,
       phonemeTimeline: insertProject.phonemeTimeline ?? null,
+      restPositionClipUrl: insertProject.restPositionClipUrl ?? null,
+      backgroundImageUrl: insertProject.backgroundImageUrl ?? null,
     };
     this.projects.set(id, project);
+    await this.saveToFile();
     return project;
   }
 
@@ -50,8 +98,11 @@ export class MemStorage implements IStorage {
     const project = this.projects.get(id);
     if (!project) return undefined;
     
-    const updated = { ...project, ...updates };
+    // Prevent overwriting id to maintain data integrity
+    const { id: _, ...safeUpdates } = updates as any;
+    const updated = { ...project, ...safeUpdates };
     this.projects.set(id, updated);
+    await this.saveToFile();
     return updated;
   }
 
@@ -66,6 +117,7 @@ export class MemStorage implements IStorage {
       variantIndex: insertClip.variantIndex ?? 0,
     };
     this.visemeClips.set(id, clip);
+    await this.saveToFile();
     return clip;
   }
 
@@ -82,7 +134,11 @@ export class MemStorage implements IStorage {
   }
 
   async deleteVisemeClip(id: string): Promise<boolean> {
-    return this.visemeClips.delete(id);
+    const success = this.visemeClips.delete(id);
+    if (success) {
+      await this.saveToFile();
+    }
+    return success;
   }
 }
 

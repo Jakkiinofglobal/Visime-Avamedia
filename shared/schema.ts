@@ -10,6 +10,8 @@ export const projects = pgTable("projects", {
   resolution: text("resolution").notNull().default("1920x1080"),
   trainingAudioUrl: text("training_audio_url"),
   phonemeTimeline: jsonb("phoneme_timeline"),
+  restPositionClipUrl: text("rest_position_clip_url"),
+  backgroundImageUrl: text("background_image_url"),
 });
 
 export const visemeClips = pgTable("viseme_clips", {

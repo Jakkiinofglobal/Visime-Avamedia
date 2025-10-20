@@ -13,6 +13,14 @@ This application allows users to create real-time video avatars by:
 
 ## Recent Changes
 
+**2025-10-20**: Avatar Rest Position & Background Features ✅
+- Added rest position clip upload - avatar returns to default state when idle
+- Implemented chromakey (green screen) removal with real-time processing
+- Added background image upload and compositing
+- Updated canvas rendering with pixel-level greenscreen removal
+- Projects now persist rest position and background settings
+- All uploaded clips are saved and maintained across sessions
+
 **2025-10-20**: Initial MVP Complete ✅
 - Created full-stack application with Express backend and React frontend
 - Implemented project creation and management system
@@ -22,7 +30,7 @@ This application allows users to create real-time video avatars by:
 - Implemented real-time preview with green-screen support for OBS
 - Added text-to-viseme conversion with timeline animation
 - Implemented live microphone simulation with latency monitoring (300-500ms)
-- All end-to-end tests passing successfully
+- Actual video playback on canvas with variant selection
 - Dark mode optimized for streaming environments
 
 ## Project Architecture
@@ -45,13 +53,15 @@ This application allows users to create real-time video avatars by:
   - `GET /api/projects/:id` - Get project by ID
   - `PATCH /api/projects/:id` - Update project
   - `POST /api/projects/:id/training-audio` - Upload training audio
+  - `POST /api/projects/:id/rest-position` - Upload rest position video clip
+  - `POST /api/projects/:id/background` - Upload background image
   - `POST /api/projects/:projectId/clips` - Upload viseme clip
   - `GET /api/projects/:projectId/clips` - Get all clips for project
   - `DELETE /api/clips/:clipId` - Delete clip
   - `POST /api/text-to-visemes` - Convert text to viseme timeline
 
 ### Data Model (`shared/schema.ts`)
-- **Project**: Project configuration (name, FPS, resolution, training audio, phoneme timeline)
+- **Project**: Project configuration (name, FPS, resolution, training audio, phoneme timeline, rest position clip URL, background image URL)
 - **VisemeClip**: Video clip metadata (project ID, viseme ID, URL, duration, variant index)
 - **VISEME_MAP**: 14 viseme categories mapping phonemes to mouth shapes (V1-V14)
 
