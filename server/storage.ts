@@ -35,7 +35,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProject(id: string, updates: Partial<Project>): Promise<Project | undefined> {
-    const { id: _, ...safeUpdates } = updates as any;
+    const { id: _, ...rawUpdates } = updates as any;
+    const safeUpdates = Object.fromEntries(
+      Object.entries(rawUpdates).filter(([_, value]) => value !== undefined)
+    );
+    
+    if (Object.keys(safeUpdates).length === 0) {
+      return this.getProject(id);
+    }
+    
     const [updated] = await db
       .update(projects)
       .set(safeUpdates)
