@@ -13,6 +13,31 @@ This application allows users to create real-time video avatars by:
 
 ## Recent Changes
 
+**2025-10-20**: Real-Time Microphone and Virtual Camera Features Complete ✅
+- **Live Microphone Input**: Real audio capture using Web Audio API
+  - getUserMedia() grants microphone access with permission handling
+  - AnalyserNode detects speech levels and drives viseme changes in real-time
+  - Silence detection (500ms threshold) reverts to V2 rest viseme
+  - Proper RAF-based loop with refs to avoid stale closures
+  - Respects text processing state (no interference during playback)
+  - Complete cleanup on toggle off and component unmount
+- **Virtual Camera Output**: Canvas streaming for OBS/streaming software
+  - canvas.captureStream(30) creates 30 FPS MediaStream from avatar canvas
+  - Toggle controls with on/off status indicators
+  - Browser Source URL provided for OBS integration
+  - Toast notifications for user feedback
+  - Proper MediaStream track cleanup
+- **Multiple Avatar Projects**: Full project management system
+  - Project list page (/) shows all saved avatars
+  - Create new projects with custom settings (name, FPS, resolution)
+  - Delete projects with cascade deletion of clips
+  - Switch between projects seamlessly
+  - Individual project page (/project/:id) for each avatar
+- **Status Indicators**: Real-time feedback for microphone and camera state
+  - Microphone status shown in button text and live indicator
+  - Virtual camera status shown in switch and descriptive label
+  - Latency display updates during recording (0ms when silent)
+
 **2025-10-20**: PostgreSQL Database Migration Complete ✅
 - **Permanent Storage**: Migrated from file-based storage to PostgreSQL database
   - All projects and viseme clips now persist permanently in the database
