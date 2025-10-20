@@ -1,48 +1,84 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, X, Film, Plus } from "lucide-react";
-import { VISEME_MAP, VisemeId } from "@shared/schema";
-
-interface ClipData {
-  id: string;
-  file: string;
-  duration: number;
-}
+import { VISEME_MAP, VisemeId, VisemeClip } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface VisemeClipUploaderProps {
   onContinue?: () => void;
+  projectId?: string;
 }
 
-export default function VisemeClipUploader({ onContinue }: VisemeClipUploaderProps) {
-  const [clips, setClips] = useState<Record<string, ClipData[]>>({});
+export default function VisemeClipUploader({ onContinue, projectId }: VisemeClipUploaderProps) {
+  const { toast } = useToast();
 
-  const handleUpload = (visemeId: string) => {
-    const newClip: ClipData = {
-      id: Math.random().toString(36).substr(2, 9),
-      file: `clip-${visemeId}-${Date.now()}.mp4`,
-      duration: Math.random() * 0.8 + 0.4,
-    };
+  const { data: clips = [] } = useQuery<VisemeClip[]>({
+    queryKey: ["/api/projects", projectId, "clips"],
+    enabled: !!projectId,
+  });
+
+  const uploadClipMutation = useMutation({
+    mutationFn: async ({ visemeId, file, variantIndex }: { visemeId: string; file: File; variantIndex: number }) => {
+      const formData = new FormData();
+      formData.append("video", file);
+      formData.append("visemeId", visemeId);
+      formData.append("variantIndex", variantIndex.toString());
+      
+      const response = await fetch(`/api/projects/${projectId}/clips`, {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!response.ok) throw new Error("Upload failed");
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Clip uploaded",
+        description: "Video clip added successfully",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "clips"] });
+    },
+  });
+
+  const deleteClipMutation = useMutation({
+    mutationFn: async (clipId: string) => {
+      const response = await fetch(`/api/clips/${clipId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) throw new Error("Delete failed");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "clips"] });
+    },
+  });
+
+  const handleFileSelect = (visemeId: string, file: File) => {
+    if (!projectId) return;
     
-    setClips(prev => ({
-      ...prev,
-      [visemeId]: [...(prev[visemeId] || []), newClip],
-    }));
+    const existingClips = clips.filter(c => c.visemeId === visemeId);
+    const variantIndex = existingClips.length;
     
-    console.log(`Uploaded clip for ${visemeId}`, newClip);
+    uploadClipMutation.mutate({ visemeId, file, variantIndex });
   };
 
-  const handleRemove = (visemeId: string, clipId: string) => {
-    setClips(prev => ({
-      ...prev,
-      [visemeId]: prev[visemeId].filter(c => c.id !== clipId),
-    }));
-    console.log(`Removed clip ${clipId} from ${visemeId}`);
+  const handleRemove = (clipId: string) => {
+    deleteClipMutation.mutate(clipId);
   };
 
-  const totalClips = Object.values(clips).reduce((sum, arr) => sum + arr.length, 0);
-  const visemesWithClips = Object.keys(clips).filter(k => clips[k].length > 0).length;
+  const clipsByViseme = clips.reduce((acc, clip) => {
+    if (!acc[clip.visemeId]) acc[clip.visemeId] = [];
+    acc[clip.visemeId].push(clip);
+    return acc;
+  }, {} as Record<string, VisemeClip[]>);
+
+  const totalClips = clips.length;
+  const visemesWithClips = Object.keys(clipsByViseme).length;
 
   return (
     <div className="space-y-6">
@@ -64,7 +100,7 @@ export default function VisemeClipUploader({ onContinue }: VisemeClipUploaderPro
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {Object.entries(VISEME_MAP).map(([visemeId, data]) => {
-              const visemeClips = clips[visemeId] || [];
+              const visemeClips = clipsByViseme[visemeId] || [];
               
               return (
                 <Card key={visemeId} className="overflow-hidden" data-testid={`viseme-card-${visemeId}`}>
@@ -88,14 +124,28 @@ export default function VisemeClipUploader({ onContinue }: VisemeClipUploaderPro
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {visemeClips.length === 0 ? (
-                      <button
-                        onClick={() => handleUpload(visemeId)}
-                        className="w-full h-24 border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-2 hover-elevate active-elevate-2 transition-colors"
-                        data-testid={`button-upload-${visemeId}`}
-                      >
-                        <Upload className="w-5 h-5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Upload clip</span>
-                      </button>
+                      <>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileSelect(visemeId, file);
+                          }}
+                          className="hidden"
+                          id={`upload-${visemeId}`}
+                          data-testid={`input-upload-${visemeId}`}
+                        />
+                        <label htmlFor={`upload-${visemeId}`}>
+                          <div
+                            className="w-full h-24 border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-2 hover-elevate active-elevate-2 transition-colors cursor-pointer"
+                            data-testid={`button-upload-${visemeId}`}
+                          >
+                            <Upload className="w-5 h-5 text-muted-foreground" />
+                            <span className="text-xs text-muted-foreground">Upload clip</span>
+                          </div>
+                        </label>
+                      </>
                     ) : (
                       <div className="space-y-2">
                         {visemeClips.map((clip, idx) => (
@@ -108,30 +158,45 @@ export default function VisemeClipUploader({ onContinue }: VisemeClipUploaderPro
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-medium truncate">Variant {idx + 1}</div>
                               <div className="text-xs text-muted-foreground font-mono">
-                                {clip.duration.toFixed(2)}s
+                                {(clip.duration / 1000).toFixed(2)}s
                               </div>
                             </div>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-6 w-6 flex-shrink-0"
-                              onClick={() => handleRemove(visemeId, clip.id)}
+                              onClick={() => handleRemove(clip.id)}
                               data-testid={`button-remove-${visemeId}-${idx}`}
                             >
                               <X className="w-3 h-3" />
                             </Button>
                           </div>
                         ))}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full"
-                          onClick={() => handleUpload(visemeId)}
-                          data-testid={`button-add-variant-${visemeId}`}
-                        >
-                          <Plus className="w-3 h-3 mr-2" />
-                          Add Variant
-                        </Button>
+                        <input
+                          type="file"
+                          accept="video/*"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) handleFileSelect(visemeId, file);
+                          }}
+                          className="hidden"
+                          id={`upload-variant-${visemeId}`}
+                          data-testid={`input-upload-variant-${visemeId}`}
+                        />
+                        <label htmlFor={`upload-variant-${visemeId}`}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            asChild
+                            data-testid={`button-add-variant-${visemeId}`}
+                          >
+                            <span>
+                              <Plus className="w-3 h-3 mr-2" />
+                              Add Variant
+                            </span>
+                          </Button>
+                        </label>
                       </div>
                     )}
                   </CardContent>

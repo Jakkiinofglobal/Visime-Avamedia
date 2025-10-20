@@ -1,38 +1,36 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Settings, Download } from "lucide-react";
+import { Settings } from "lucide-react";
 import ProjectSetup from "@/components/ProjectSetup";
 import PhonemeTimeline from "@/components/PhonemeTimeline";
 import VisemeClipUploader from "@/components/VisemeClipUploader";
 import AvatarPreview from "@/components/AvatarPreview";
 import StatusBar from "@/components/StatusBar";
 import ThemeToggle from "@/components/ThemeToggle";
-
-//todo: remove mock functionality
-const mockSegments = [
-  { phoneme: "dh", start: 0.0, end: 0.15, viseme: "V11" },
-  { phoneme: "ah", start: 0.15, end: 0.30, viseme: "V3" },
-  { phoneme: "k", start: 0.30, end: 0.45, viseme: "V14" },
-  { phoneme: "w", start: 0.45, end: 0.60, viseme: "V8" },
-  { phoneme: "ih", start: 0.60, end: 0.75, viseme: "V6" },
-  { phoneme: "k", start: 0.75, end: 0.90, viseme: "V14" },
-  { phoneme: "b", start: 0.90, end: 1.05, viseme: "V1" },
-  { phoneme: "r", start: 1.05, end: 1.20, viseme: "V13" },
-  { phoneme: "aw", start: 1.20, end: 1.40, viseme: "V7" },
-  { phoneme: "n", start: 1.40, end: 1.55, viseme: "V14" },
-  { phoneme: "f", start: 1.55, end: 1.75, viseme: "V10" },
-  { phoneme: "aa", start: 1.75, end: 1.90, viseme: "V3" },
-  { phoneme: "k", start: 1.90, end: 2.05, viseme: "V14" },
-  { phoneme: "s", start: 2.05, end: 2.25, viseme: "V12" },
-];
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Project, PhonemeSegment } from "@shared/schema";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("setup");
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [micActive, setMicActive] = useState(false);
   const [latency, setLatency] = useState(0);
 
-  const handleSetupComplete = () => {
+  const createProjectMutation = useMutation({
+    mutationFn: async (data: { name: string; fps: number; resolution: string }) => {
+      const response = await apiRequest("POST", "/api/projects", data);
+      return await response.json() as Project;
+    },
+    onSuccess: (project) => {
+      setCurrentProject(project);
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+    },
+  });
+
+  const handleSetupComplete = (config: { name: string; fps: number; resolution: string }) => {
+    createProjectMutation.mutate(config);
     setActiveTab("alignment");
   };
 
@@ -55,7 +53,9 @@ export default function Home() {
           </div>
           <div>
             <h1 className="text-lg font-bold">Viseme Avatar Studio</h1>
-            <p className="text-xs text-muted-foreground">Real-time Video Avatar Creator</p>
+            <p className="text-xs text-muted-foreground">
+              {currentProject ? currentProject.name : "Real-time Video Avatar Creator"}
+            </p>
           </div>
         </div>
 
@@ -94,18 +94,28 @@ export default function Home() {
 
             <TabsContent value="alignment" className="mt-0">
               <PhonemeTimeline
-                segments={mockSegments}
+                segments={currentProject?.phonemeTimeline as PhonemeSegment[] | undefined}
                 duration={3.2}
                 onContinue={handleAlignmentComplete}
+                projectId={currentProject?.id}
+                onProjectUpdate={(updatedProject) => setCurrentProject(updatedProject)}
               />
             </TabsContent>
 
             <TabsContent value="upload" className="mt-0">
-              <VisemeClipUploader onContinue={handleUploadComplete} />
+              <VisemeClipUploader 
+                onContinue={handleUploadComplete}
+                projectId={currentProject?.id}
+              />
             </TabsContent>
 
             <TabsContent value="preview" className="mt-0">
-              <AvatarPreview onExport={() => console.log("Export triggered")} />
+              <AvatarPreview 
+                onExport={() => console.log("Export triggered")}
+                projectId={currentProject?.id}
+                onMicStatusChange={setMicActive}
+                onLatencyChange={setLatency}
+              />
             </TabsContent>
           </div>
         </div>

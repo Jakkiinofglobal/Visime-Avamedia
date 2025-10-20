@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,51 +7,96 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Mic, MicOff, Square, Play, Download, Copy } from "lucide-react";
-import { VISEME_MAP } from "@shared/schema";
+import { VISEME_MAP, VisemeClip, PhonemeSegment } from "@shared/schema";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface AvatarPreviewProps {
   onExport?: () => void;
+  projectId?: string;
+  onMicStatusChange?: (active: boolean) => void;
+  onLatencyChange?: (latency: number) => void;
 }
 
-export default function AvatarPreview({ onExport }: AvatarPreviewProps) {
+export default function AvatarPreview({ onExport, projectId, onMicStatusChange, onLatencyChange }: AvatarPreviewProps) {
   const [testText, setTestText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [greenScreen, setGreenScreen] = useState(true);
   const [currentViseme, setCurrentViseme] = useState("V2");
-  const [latency, setLatency] = useState(380);
+  const [latency, setLatency] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { toast } = useToast();
+
+  const { data: clips = [] } = useQuery<VisemeClip[]>({
+    queryKey: ["/api/projects", projectId, "clips"],
+    enabled: !!projectId,
+  });
+
+  const textToVisemesMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const response = await apiRequest("POST", "/api/text-to-visemes", { text });
+      return await response.json() as { timeline: PhonemeSegment[]; duration: number };
+    },
+    onSuccess: (data) => {
+      console.log("Viseme timeline:", data.timeline);
+      playVisemeSequence(data.timeline);
+    },
+  });
+
+  const playVisemeSequence = (timeline: PhonemeSegment[]) => {
+    let index = 0;
+    const interval = setInterval(() => {
+      if (index >= timeline.length) {
+        clearInterval(interval);
+        setIsProcessing(false);
+        setCurrentViseme("V2");
+        return;
+      }
+      
+      setCurrentViseme(timeline[index].viseme);
+      const newLatency = Math.floor(Math.random() * 200) + 280;
+      setLatency(newLatency);
+      onLatencyChange?.(newLatency);
+      index++;
+    }, 150);
+  };
 
   useEffect(() => {
-    if (isRecording || isProcessing) {
+    if (isRecording) {
       const interval = setInterval(() => {
         const visemes = Object.keys(VISEME_MAP);
         setCurrentViseme(visemes[Math.floor(Math.random() * visemes.length)]);
-        setLatency(Math.floor(Math.random() * 200) + 300);
+        const newLatency = Math.floor(Math.random() * 200) + 300;
+        setLatency(newLatency);
+        onLatencyChange?.(newLatency);
       }, 200);
       return () => clearInterval(interval);
+    } else {
+      setLatency(0);
+      onLatencyChange?.(0);
     }
-  }, [isRecording, isProcessing]);
+  }, [isRecording, onLatencyChange]);
 
   const handleMicToggle = () => {
-    setIsRecording(!isRecording);
-    console.log(isRecording ? "Stopped recording" : "Started recording");
+    const newState = !isRecording;
+    setIsRecording(newState);
+    onMicStatusChange?.(newState);
   };
 
   const handleTextProcess = () => {
     if (!testText.trim()) return;
     setIsProcessing(true);
-    console.log("Processing text:", testText);
-    setTimeout(() => {
-      setIsProcessing(false);
-      console.log("Text processing complete");
-    }, 3000);
+    textToVisemesMutation.mutate(testText);
   };
 
   const handleCopyUrl = () => {
-    const url = "http://localhost:5000/stream/avatar-preview";
+    const url = `${window.location.origin}/stream/avatar-preview`;
     navigator.clipboard.writeText(url);
-    console.log("Copied browser source URL");
+    toast({
+      title: "Copied",
+      description: "Browser source URL copied to clipboard",
+    });
   };
 
   const getLatencyColor = () => {
@@ -120,7 +166,7 @@ export default function AvatarPreview({ onExport }: AvatarPreviewProps) {
               <Label className="text-sm">Browser Source URL (for OBS)</Label>
               <div className="flex gap-2">
                 <Input
-                  value="http://localhost:5000/stream/avatar-preview"
+                  value={`${window.location.origin}/stream/avatar-preview`}
                   readOnly
                   className="font-mono text-xs"
                   data-testid="input-browser-source-url"
@@ -209,25 +255,18 @@ export default function AvatarPreview({ onExport }: AvatarPreviewProps) {
           <Card>
             <CardHeader>
               <CardTitle>Export</CardTitle>
-              <CardDescription>Save your avatar configuration or export video</CardDescription>
+              <CardDescription>Save your avatar configuration</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
               <Button
                 variant="outline"
                 className="w-full"
                 onClick={onExport}
+                disabled={clips.length === 0}
                 data-testid="button-export-config"
               >
                 <Download className="w-4 h-4 mr-2" />
                 Export Configuration
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full"
-                data-testid="button-export-video"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export Test Video (MP4)
               </Button>
             </CardContent>
           </Card>
