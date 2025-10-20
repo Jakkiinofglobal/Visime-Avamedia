@@ -13,13 +13,27 @@ This application allows users to create real-time video avatars by:
 
 ## Recent Changes
 
-**2025-10-20**: Avatar Rest Position & Background Features ✅
-- Added rest position clip upload - avatar returns to default state when idle
-- Implemented chromakey (green screen) removal with real-time processing
-- Added background image upload and compositing
-- Updated canvas rendering with pixel-level greenscreen removal
-- Projects now persist rest position and background settings
-- All uploaded clips are saved and maintained across sessions
+**2025-10-20**: Canvas Video Renderer & Persistence Complete ✅
+- **Canvas Video Playback**: Implemented full video rendering system in AvatarPreview
+  - Preloads all uploaded clips into HTMLVideoElement objects
+  - requestAnimationFrame render loop for smooth 30-60fps playback
+  - Automatic viseme switching based on text-to-viseme timeline
+  - Rest pose fallback (explicit rest → V2 → first available clip)
+  - Aspect ratio preservation with "cover" behavior
+  - Proper cleanup of video elements and animation frames
+- **File-Backed Persistence**: Storage now survives server restarts
+  - Synchronous loading in constructor prevents race conditions
+  - All projects and clips saved to uploads/data.json
+  - Directory creation ensures first write succeeds
+  - Automatic save on all mutations (create, update, delete)
+- **Security Improvements**: Fixed path traversal vulnerability
+  - Replaced custom /uploads handler with express.static
+  - Dotfiles denied, fallthrough disabled for safety
+  - Proper MIME type handling for video/image files
+- **Rest Pose Selection**: Users can mark any uploaded clip as rest position
+  - Star icon indicates selected rest pose in UI
+  - PATCH endpoint updates restPositionClipUrl
+  - Separate upload endpoint for dedicated rest position clips
 
 **2025-10-20**: Initial MVP Complete ✅
 - Created full-stack application with Express backend and React frontend
@@ -46,7 +60,7 @@ This application allows users to create real-time video avatars by:
   - `ThemeToggle`: Dark/light mode switcher
 
 ### Backend (`server/`)
-- **Storage**: In-memory storage for projects and viseme clips
+- **Storage**: File-backed in-memory storage (persists to uploads/data.json)
 - **Routes**:
   - `POST /api/projects` - Create new project
   - `GET /api/projects` - List all projects
@@ -83,24 +97,26 @@ This application allows users to create real-time video avatars by:
 
 ### Phase 1: Core Functionality
 - [ ] Integrate real speech recognition (Vosk for CPU or WhisperX for GPU)
-- [ ] Implement actual video playback in preview canvas
+- [✅] Implement actual video playback in preview canvas
 - [ ] Add FFmpeg integration for clip trimming and normalization
-- [ ] Build clip sequencing engine for real-time playback
+- [✅] Build clip sequencing engine for real-time playback
 - [ ] Add audio waveform visualization
 
 ### Phase 2: Advanced Features
 - [ ] Virtual camera output (browser-based or system-level)
 - [ ] Export functionality (MP4 timeline stitching)
-- [ ] Multiple clip variants with randomization
-- [ ] Project save/load functionality
+- [✅] Multiple clip variants with randomization
+- [✅] Project save/load functionality (file-backed persistence)
 - [ ] Latency optimization (<300ms target)
+- [ ] Optimize chroma key rendering (reuse offscreen canvas)
+- [ ] Add PATCH request validation with Zod
 
 ### Phase 3: Production Features
 - [ ] Database migration (PostgreSQL)
 - [ ] User authentication
 - [ ] Cloud storage for clips
 - [ ] WebSocket for real-time streaming
-- [ ] Browser source for OBS integration
+- [✅] Browser source for OBS integration (available via canvas URL)
 
 ## Development Notes
 
