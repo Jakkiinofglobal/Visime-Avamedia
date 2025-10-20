@@ -2,13 +2,32 @@ import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import path from "path";
 import { insertProjectSchema, insertVisemeClipSchema, VISEME_MAP } from "@shared/schema";
 import { z } from "zod";
-import fs from "fs/promises";
+import { v2 as cloudinary } from "cloudinary";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Configure Cloudinary storage for multer
+const cloudinaryStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    return {
+      folder: "viseme-avatar",
+      resource_type: "auto", // Supports video, image, and audio
+      allowed_formats: ["mp4", "webm", "mov", "mp3", "wav", "ogg", "jpg", "jpeg", "png", "gif"],
+    };
+  },
+});
 
 const upload = multer({ 
-  dest: "uploads/",
+  storage: cloudinaryStorage,
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
 });
 
@@ -63,14 +82,7 @@ function textToPhonemes(text: string): string[] {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Serve uploaded files securely using express.static
-  app.use("/uploads", (req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    next();
-  }, express.static(path.join(process.cwd(), "uploads"), {
-    fallthrough: false,
-    dotfiles: "deny",
-  }));
+  // Files are now served from Cloudinary, no local static serving needed
 
   // Create project
   app.post("/api/projects", async (req, res) => {
@@ -146,7 +158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const audioUrl = `/uploads/${req.file.filename}`;
+      const audioUrl = req.file.path; // Cloudinary URL
       
       // Simulate phoneme alignment (in production, use WhisperX or Vosk)
       const mockTimeline = [
@@ -178,7 +190,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const clipUrl = `/uploads/${req.file.filename}`;
+      const clipUrl = req.file.path; // Cloudinary URL
       
       const project = await storage.updateProject(req.params.id, {
         restPositionClipUrl: clipUrl,
@@ -201,7 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      const imageUrl = `/uploads/${req.file.filename}`;
+      const imageUrl = req.file.path; // Cloudinary URL
       
       const project = await storage.updateProject(req.params.id, {
         backgroundImageUrl: imageUrl,
@@ -230,7 +242,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "visemeId is required" });
       }
 
-      const clipUrl = `/uploads/${req.file.filename}`;
+      const clipUrl = req.file.path; // Cloudinary URL
       
       const clipData = insertVisemeClipSchema.parse({
         projectId: req.params.projectId,
@@ -301,13 +313,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: error instanceof Error ? error.message : "Processing failed" });
     }
   });
-
-  // Create uploads directory if it doesn't exist
-  try {
-    await fs.mkdir("uploads", { recursive: true });
-  } catch (error) {
-    console.error("Error creating uploads directory:", error);
-  }
 
   const httpServer = createServer(app);
   return httpServer;

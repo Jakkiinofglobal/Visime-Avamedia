@@ -13,6 +13,21 @@ This application allows users to create real-time video avatars by:
 
 ## Recent Changes
 
+**2025-10-20**: Cloudinary Integration for Vercel Deployment ✅
+- **Cloud File Storage**: Migrated from local /uploads to Cloudinary
+  - All video, audio, and image uploads now stored in Cloudinary
+  - Files served via CDN for better performance and reliability
+  - Supports deployment to platforms with ephemeral filesystems (Vercel, etc.)
+  - Configured multer-storage-cloudinary for seamless integration
+  - Files organized in "viseme-avatar" folder in Cloudinary
+  - Supports multiple file formats: mp4, webm, mov, mp3, wav, ogg, jpg, png, gif
+  - 100MB file size limit maintained
+- **Removed Local File System Dependencies**:
+  - No more local /uploads directory
+  - Removed express.static serving
+  - All file URLs now point to Cloudinary CDN
+  - Ready for serverless deployment
+
 **2025-10-20**: Real-Time Microphone and Virtual Camera Features Complete ✅
 - **Live Microphone Input**: Real audio capture using Web Audio API
   - getUserMedia() grants microphone access with permission handling
