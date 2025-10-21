@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, X, Film, Plus, Check, Star } from "lucide-react";
-import { VISEME_MAP, VisemeId, VisemeClip, Project } from "@shared/schema";
+import { getVisemeMap, VisemeClip, Project } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -25,6 +25,9 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
     queryKey: ["/api/projects", projectId, "clips"],
     enabled: !!projectId,
   });
+
+  // Get the correct viseme map based on project complexity
+  const visemeMap = project ? getVisemeMap(project.visemeComplexity) : getVisemeMap(3);
 
   const uploadClipMutation = useMutation({
     mutationFn: async ({ visemeId, file, variantIndex }: { visemeId: string; file: File; variantIndex: number }) => {
@@ -208,8 +211,9 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {Object.entries(VISEME_MAP).map(([visemeId, data]) => {
+            {Object.entries(visemeMap).map(([visemeId, data]) => {
               const visemeClips = clipsByViseme[visemeId] || [];
+              const visemeData = data as { label: string; phonemes: readonly string[]; color: string; example?: string };
               
               return (
                 <Card key={visemeId} className="overflow-hidden" data-testid={`viseme-card-${visemeId}`}>
@@ -220,15 +224,15 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
                         variant="outline"
                         className="text-xs"
                         style={{
-                          borderColor: data.color,
-                          color: data.color,
+                          borderColor: visemeData.color,
+                          color: visemeData.color,
                         }}
                       >
-                        {data.label}
+                        {visemeData.label}
                       </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground font-mono">
-                      /{data.phonemes.join(", ")}/
+                      {visemeData.example || visemeData.phonemes.join(", ")}
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-2">
@@ -332,7 +336,7 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
 
           <div className="flex items-center justify-between pt-6 mt-6 border-t">
             <div className="text-sm text-muted-foreground">
-              {visemesWithClips} of {Object.keys(VISEME_MAP).length} visemes have clips
+              {visemesWithClips} of {Object.keys(visemeMap).length} visemes have clips
             </div>
             <Button
               size="lg"
