@@ -162,18 +162,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const audioUrl = req.file.path; // Cloudinary URL
       
+      // Fetch project to get its complexity level
+      const existingProject = await storage.getProject(req.params.id);
+      if (!existingProject) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Get appropriate viseme map based on project complexity
+      const visemeMap = getVisemeMap(existingProject.visemeComplexity || 3);
+      const visemeIds = Object.keys(visemeMap);
+
       // Simulate phoneme alignment (in production, use WhisperX or Vosk)
-      // Using new simplified 9-viseme system
-      const mockTimeline = [
-        { phoneme: "dh", start: 0.0, end: 0.15, viseme: "Tie" },    // th sound
-        { phoneme: "ah", start: 0.15, end: 0.30, viseme: "Ohh" },   // open vowel
-        { phoneme: "k", start: 0.30, end: 0.45, viseme: "Ayy" },    // k/g sound
-        { phoneme: "w", start: 0.45, end: 0.60, viseme: "Wuh" },    // w glide
-        { phoneme: "ih", start: 0.60, end: 0.75, viseme: "Mee" },   // smile vowel
-        { phoneme: "k", start: 0.75, end: 0.90, viseme: "Ayy" },    // k/g sound
-        { phoneme: "b", start: 0.90, end: 1.05, viseme: "Baa" },    // closed lips
-        { phoneme: "r", start: 1.05, end: 1.20, viseme: "Wuh" },    // r glide
-      ];
+      // Generate mock timeline using valid viseme IDs for this complexity level
+      const mockTimeline = visemeIds.length >= 3 ? [
+        { phoneme: visemeMap[visemeIds[0]].phonemes[0], start: 0.0, end: 0.15, viseme: visemeIds[0] },
+        { phoneme: visemeMap[visemeIds[1]].phonemes[0], start: 0.15, end: 0.30, viseme: visemeIds[1] },
+        { phoneme: visemeMap[visemeIds[2]].phonemes[0], start: 0.30, end: 0.45, viseme: visemeIds[2] },
+        { phoneme: visemeMap[visemeIds[0]].phonemes[1] || visemeMap[visemeIds[0]].phonemes[0], start: 0.45, end: 0.60, viseme: visemeIds[0] },
+        ...(visemeIds.length > 3 ? [
+          { phoneme: visemeMap[visemeIds[3]].phonemes[0], start: 0.60, end: 0.75, viseme: visemeIds[3] },
+          { phoneme: visemeMap[visemeIds[4 % visemeIds.length]].phonemes[0], start: 0.75, end: 0.90, viseme: visemeIds[4 % visemeIds.length] },
+          { phoneme: visemeMap[visemeIds[5 % visemeIds.length]].phonemes[0], start: 0.90, end: 1.05, viseme: visemeIds[5 % visemeIds.length] },
+          { phoneme: visemeMap[visemeIds[6 % visemeIds.length]].phonemes[0], start: 1.05, end: 1.20, viseme: visemeIds[6 % visemeIds.length] },
+        ] : [])
+      ] : [];
 
       const project = await storage.updateProject(req.params.id, {
         trainingAudioUrl: audioUrl,
