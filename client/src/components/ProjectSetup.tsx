@@ -7,13 +7,14 @@ import { Label } from "@/components/ui/label";
 import { Mic, Square, Loader2 } from "lucide-react";
 
 interface ProjectSetupProps {
-  onComplete?: (config: { name: string; fps: number; resolution: string }) => void;
+  onComplete?: (config: { name: string; fps: number; resolution: string; visemeComplexity: number }) => void;
 }
 
 export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
   const [projectName, setProjectName] = useState("My Avatar Project");
   const [fps, setFps] = useState("30");
   const [resolution, setResolution] = useState("1920x1080");
+  const [visemeComplexity, setVisemeComplexity] = useState("3");
   const [isRecording, setIsRecording] = useState(false);
   const [hasRecording, setHasRecording] = useState(false);
 
@@ -28,8 +29,8 @@ export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
   };
 
   const handleContinue = () => {
-    console.log("Project setup complete", { projectName, fps, resolution });
-    onComplete?.({ name: projectName, fps: parseInt(fps), resolution });
+    console.log("Project setup complete", { projectName, fps, resolution, visemeComplexity });
+    onComplete?.({ name: projectName, fps: parseInt(fps), resolution, visemeComplexity: parseInt(visemeComplexity) });
   };
 
   return (
@@ -79,6 +80,23 @@ export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="complexity" data-testid="label-complexity">Viseme Complexity</Label>
+            <Select value={visemeComplexity} onValueChange={setVisemeComplexity}>
+              <SelectTrigger id="complexity" data-testid="select-complexity">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="3">3 Visemes (Simple - Baa, Maa, Ohh)</SelectItem>
+                <SelectItem value="9">9 Visemes (Medium Detail)</SelectItem>
+                <SelectItem value="14">14 Visemes (Full Detail)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Choose how many mouth shapes to record. 3 is fastest, 14 is most realistic.
+            </p>
           </div>
         </CardContent>
       </Card>
