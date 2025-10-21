@@ -407,7 +407,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
         
-        if (average > 20) {
+        if (average > 60) {
           lastSoundTimeRef.current = Date.now();
           const visemeKeys = Object.keys(VISEME_MAP);
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
