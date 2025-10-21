@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Mic, Square, Play, Download, Copy, Image as ImageIcon } from "lucide-react";
-import { VISEME_MAP, VisemeClip, PhonemeSegment, Project } from "@shared/schema";
+import { getVisemeMap, VisemeClip, PhonemeSegment, Project } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -57,6 +57,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     queryKey: ["/api/projects", projectId],
     enabled: !!projectId,
   });
+
+  // Get the correct viseme map based on project complexity
+  const visemeMap = project ? getVisemeMap(project.visemeComplexity) : getVisemeMap(3);
 
   const textToVisemesMutation = useMutation({
     mutationFn: async (text: string) => {
@@ -420,7 +423,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         
         if (average > micSensitivity[0]) {
           lastSoundTimeRef.current = Date.now();
-          const visemeKeys = Object.keys(VISEME_MAP) as Array<keyof typeof VISEME_MAP>;
+          const visemeKeys = Object.keys(visemeMap);
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
           setCurrentViseme(randomViseme);
           
@@ -797,25 +800,28 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-3 gap-2">
-                {Object.entries(VISEME_MAP).map(([id, data]) => (
-                  <Button
-                    key={id}
-                    variant={currentViseme === id ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handleManualTrigger(id)}
-                    disabled={isProcessing}
-                    className="font-mono"
-                    style={currentViseme === id ? {
-                      backgroundColor: data.color,
-                      borderColor: data.color,
-                    } : {
-                      borderColor: data.color,
-                    }}
-                    data-testid={`button-trigger-${id}`}
-                  >
-                    {id}
-                  </Button>
-                ))}
+                {Object.entries(visemeMap).map(([id, data]) => {
+                  const visemeData = data as { label: string; phonemes: readonly string[]; color: string; example?: string };
+                  return (
+                    <Button
+                      key={id}
+                      variant={currentViseme === id ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleManualTrigger(id)}
+                      disabled={isProcessing}
+                      className="font-mono"
+                      style={currentViseme === id ? {
+                        backgroundColor: visemeData.color,
+                        borderColor: visemeData.color,
+                      } : {
+                        borderColor: visemeData.color,
+                      }}
+                      data-testid={`button-trigger-${id}`}
+                    >
+                      {id}
+                    </Button>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
@@ -844,30 +850,33 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       <Card>
         <CardHeader>
           <CardTitle>Active Visemes Stream</CardTitle>
-          <CardDescription>Simplified 9-viseme system - {Object.keys(VISEME_MAP).length} mouth shapes</CardDescription>
+          <CardDescription>{project?.visemeComplexity || 3}-viseme system - {Object.keys(visemeMap).length} mouth shapes</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {Object.entries(VISEME_MAP).map(([id, data]) => (
-              <div key={id} className="flex flex-col items-center gap-1">
-                <Badge
-                  variant={currentViseme === id ? "default" : "outline"}
-                  className="font-mono transition-all"
-                  style={currentViseme === id ? {
-                    backgroundColor: data.color,
-                    borderColor: data.color,
-                    color: "hsl(var(--primary-foreground))",
-                  } : {
-                    borderColor: data.color,
-                    color: data.color,
-                  }}
-                  data-testid={`viseme-indicator-${id}`}
-                >
-                  {id}
-                </Badge>
-                <span className="text-xs text-muted-foreground">{data.example}</span>
-              </div>
-            ))}
+            {Object.entries(visemeMap).map(([id, data]) => {
+              const visemeData = data as { label: string; phonemes: readonly string[]; color: string; example?: string };
+              return (
+                <div key={id} className="flex flex-col items-center gap-1">
+                  <Badge
+                    variant={currentViseme === id ? "default" : "outline"}
+                    className="font-mono transition-all"
+                    style={currentViseme === id ? {
+                      backgroundColor: visemeData.color,
+                      borderColor: visemeData.color,
+                      color: "hsl(var(--primary-foreground))",
+                    } : {
+                      borderColor: visemeData.color,
+                      color: visemeData.color,
+                    }}
+                    data-testid={`viseme-indicator-${id}`}
+                  >
+                    {id}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">{visemeData.example || visemeData.phonemes.slice(0, 3).join(",")}</span>
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
