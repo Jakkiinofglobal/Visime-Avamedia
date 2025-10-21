@@ -134,6 +134,7 @@ export default function ProjectPage() {
                 duration={3.2}
                 onContinue={handleAlignmentComplete}
                 projectId={currentProject.id}
+                project={currentProject}
                 onProjectUpdate={() => queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] })}
               />
             </TabsContent>

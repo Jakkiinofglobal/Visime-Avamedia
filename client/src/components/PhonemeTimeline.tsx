@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Play, Pause, SkipBack, SkipForward, Upload } from "lucide-react";
-import { PhonemeSegment, VISEME_MAP, VisemeId, Project } from "@shared/schema";
+import { PhonemeSegment, getVisemeMap, Project } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,13 +13,16 @@ interface PhonemeTimelineProps {
   duration?: number;
   onContinue?: () => void;
   projectId?: string;
+  project?: Project;
   onProjectUpdate?: (project: Project) => void;
 }
 
-export default function PhonemeTimeline({ segments, duration = 3.2, onContinue, projectId, onProjectUpdate }: PhonemeTimelineProps) {
+export default function PhonemeTimeline({ segments, duration = 3.2, onContinue, projectId, project, onProjectUpdate }: PhonemeTimelineProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const { toast } = useToast();
+  
+  const visemeMap = getVisemeMap(project?.visemeComplexity || 3);
 
   const uploadAudioMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -99,7 +102,7 @@ export default function PhonemeTimeline({ segments, duration = 3.2, onContinue, 
                 {segments.map((segment, idx) => {
                   const left = (segment.start / duration) * 100;
                   const width = ((segment.end - segment.start) / duration) * 100;
-                  const visemeData = VISEME_MAP[segment.viseme as VisemeId];
+                  const visemeData = visemeMap[segment.viseme as keyof typeof visemeMap] as { label: string; phonemes: readonly string[]; color: string; example?: string } | undefined;
                   
                   return (
                     <div
@@ -172,7 +175,7 @@ export default function PhonemeTimeline({ segments, duration = 3.2, onContinue, 
                 <h4 className="text-sm font-semibold mb-3">Detected Visemes</h4>
                 <div className="flex flex-wrap gap-2">
                   {Array.from(new Set(segments.map(s => s.viseme))).map((viseme) => {
-                    const visemeData = VISEME_MAP[viseme as VisemeId];
+                    const visemeData = visemeMap[viseme as keyof typeof visemeMap] as { label: string; phonemes: readonly string[]; color: string; example?: string } | undefined;
                     return (
                       <div
                         key={viseme}

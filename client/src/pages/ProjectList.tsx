@@ -18,13 +18,14 @@ export default function ProjectList() {
   const [projectName, setProjectName] = useState("");
   const [fps, setFps] = useState("30");
   const [resolution, setResolution] = useState("1920x1080");
+  const [visemeComplexity, setVisemeComplexity] = useState("9");
 
   const { data: projects, isLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
   });
 
   const createProjectMutation = useMutation({
-    mutationFn: async (data: { name: string; fps: number; resolution: string }) => {
+    mutationFn: async (data: { name: string; fps: number; resolution: string; visemeComplexity: number }) => {
       const response = await apiRequest("POST", "/api/projects", data);
       return await response.json() as Project;
     },
@@ -52,6 +53,7 @@ export default function ProjectList() {
       name: projectName,
       fps: parseInt(fps),
       resolution: resolution,
+      visemeComplexity: parseInt(visemeComplexity),
     });
   };
 
@@ -132,6 +134,20 @@ export default function ProjectList() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="complexity">Viseme Complexity</Label>
+                  <Select value={visemeComplexity} onValueChange={setVisemeComplexity}>
+                    <SelectTrigger id="complexity" data-testid="select-complexity">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3">3 visemes (Simple)</SelectItem>
+                      <SelectItem value="9">9 visemes (Medium)</SelectItem>
+                      <SelectItem value="14">14 visemes (Legacy/Full)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <DialogFooter>
@@ -201,7 +217,7 @@ export default function ProjectList() {
                         </Button>
                       </CardTitle>
                       <CardDescription>
-                        {project.fps} FPS • {project.resolution}
+                        {project.fps} FPS • {project.resolution} • {project.visemeComplexity || 3} visemes
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

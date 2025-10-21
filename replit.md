@@ -5,15 +5,42 @@ A real-time video avatar application that sequences uploaded green-screen mouth-
 ## Overview
 
 This application allows users to create real-time video avatars by:
-1. Creating a project with custom FPS and resolution settings
+1. Creating a project with custom FPS, resolution, and **viseme complexity** settings (3, 9, or 14 mouth shapes)
 2. Recording a training sentence for phoneme alignment
-3. Uploading green-screen video clips for 9 simplified viseme (mouth shape) categories
+3. Uploading green-screen video clips for the selected viseme categories
 4. Testing with text-to-speech or live microphone input
 5. Adjusting playback speed and microphone sensitivity for optimal performance
 6. Manually triggering specific visemes for precise control
 7. Streaming the output to OBS or other streaming software
 
 ## Recent Changes
+
+**2025-10-21**: Three-Tier Viseme Complexity System ✅
+- **Three Complexity Levels**: Users can now choose between 3, 9, or 14 viseme categories when creating a project
+  - **3 visemes (Simple)**: Baa (Closed), Maa (Mid), Ohh (Open)
+    - Simplest option for beginners or low-fidelity avatars
+    - Minimal recording required (just 3 mouth shape videos)
+  - **9 visemes (Medium)**: Baa, Mee, Foe, Tie, Loo, Wuh, Shhh, Ohh, Ayy
+    - Default/recommended option balancing quality and complexity
+    - Good coverage of common phonemes with manageable recording time
+  - **14 visemes (Legacy/Full)**: V1-V14 (full ARPABET coverage)
+    - Maximum detail for professional productions
+    - Complete phoneme coverage for highest quality lip-sync
+- **Project Creation**: Complexity level selector added to "Create New Avatar" dialog
+  - Dropdown menu with clear descriptions for each level
+  - Defaults to 9 visemes (Medium) for best balance
+  - Cannot be changed after project creation
+- **Dynamic UI**: Upload Clips tab shows only the visemes for the selected complexity level
+  - 3-viseme projects show 3 upload cards
+  - 9-viseme projects show 9 upload cards
+  - 14-viseme projects show 14 upload cards
+- **Backend Validation**: Server validates uploaded clip viseme IDs match project complexity
+  - Prevents uploading V5 clip to a 3-viseme project
+  - Training audio generates timelines with correct viseme IDs for each complexity level
+- **Rest Position Management**: Added "Remove Rest Position" button
+  - Clears rest position video with single click
+  - Shows confirmation toast on successful removal
+- **Homepage Display**: Project cards show complexity level (e.g., "30 FPS • 1920x1080 • 9 visemes")
 
 **2025-10-21**: Simplified 9-Viseme System & Enhanced Controls ✅
 - **BREAKING CHANGE**: Viseme system refactored from 14 to 9 categories
