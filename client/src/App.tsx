@@ -5,7 +5,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import ProjectList from "@/pages/ProjectList";
 import Project from "@/pages/Project";
-import VirtualCameraStream from "@/pages/VirtualCameraStream";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -13,7 +12,6 @@ function Router() {
     <Switch>
       <Route path="/" component={ProjectList} />
       <Route path="/project/:id" component={Project} />
-      <Route path="/stream/avatar-preview/:projectId" component={VirtualCameraStream} />
       <Route component={NotFound} />
     </Switch>
   );

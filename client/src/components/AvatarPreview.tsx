@@ -6,12 +6,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Mic, Square, Play, Download, Copy, Upload, Image as ImageIcon, Gauge } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { Mic, Square, Play, Download, Copy, Upload, Image as ImageIcon } from "lucide-react";
 import { VISEME_MAP, VisemeClip, PhonemeSegment, Project } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import CrossfadeCanvas from "@/components/CrossfadeCanvas";
 
 interface AvatarPreviewProps {
   onExport?: () => void;
@@ -30,16 +28,12 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [isProcessing, setIsProcessing] = useState(false);
   const [virtualCameraActive, setVirtualCameraActive] = useState(false);
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
-  const [micSensitivity, setMicSensitivity] = useState(25);
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [currentVideoSrc, setCurrentVideoSrc] = useState("");
-  const [nextVideoSrc, setNextVideoSrc] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   
   const videoElementsRef = useRef<Map<string, HTMLVideoElement[]>>(new Map());
   const activeVideoRef = useRef<HTMLVideoElement | null>(null);
+  const rafIdRef = useRef<number | null>(null);
   const variantIndexRef = useRef<Map<string, number>>(new Map());
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -49,8 +43,6 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const isRecordingRef = useRef(false);
   const isProcessingRef = useRef(false);
   const lastSoundTimeRef = useRef(0);
-  const lastVisemeSwitchRef = useRef(0);
-  const MIN_DWELL_MS = 50;
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -111,8 +103,6 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       if (clips.length === 0) return;
 
       const videoMap = new Map<string, HTMLVideoElement[]>();
-      let loadedCount = 0;
-      let failedCount = 0;
 
       for (const clip of clips) {
         const video = document.createElement("video");
@@ -122,39 +112,18 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         video.loop = false;
         video.preload = "auto";
 
-        const loaded = await new Promise<boolean>((resolve) => {
-          const timeout = setTimeout(() => {
-            console.error(`Timeout loading clip: ${clip.clipUrl}`);
-            resolve(false);
-          }, 10000);
-
-          video.addEventListener("canplay", () => {
-            clearTimeout(timeout);
-            resolve(true);
-          }, { once: true });
-
+        await new Promise<void>((resolve) => {
+          video.addEventListener("canplay", () => resolve(), { once: true });
           video.addEventListener("error", () => {
-            clearTimeout(timeout);
-            resolve(false);
+            console.error(`Failed to load clip: ${clip.clipUrl}`);
+            resolve();
           }, { once: true });
         });
 
-        if (loaded) {
-          if (!videoMap.has(clip.visemeId)) {
-            videoMap.set(clip.visemeId, []);
-          }
-          videoMap.get(clip.visemeId)!.push(video);
-          loadedCount++;
-        } else {
-          failedCount++;
+        if (!videoMap.has(clip.visemeId)) {
+          videoMap.set(clip.visemeId, []);
         }
-      }
-
-      console.log(`Loaded ${loadedCount}/${clips.length} clips (${failedCount} failed)`);
-
-      if (loadedCount === 0) {
-        console.error("No video clips loaded successfully");
-        return;
+        videoMap.get(clip.visemeId)!.push(video);
       }
 
       videoElementsRef.current = videoMap;
@@ -179,8 +148,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         restVideo = videoMap.get(firstViseme)?.[0] || null;
       }
 
-      console.log(`Loaded ${loadedCount}/${clips.length} clips`);
-      setCurrentViseme("V2");
+      if (restVideo) {
+        activeVideoRef.current = restVideo;
+        restVideo.loop = true;
+        restVideo.play().catch(console.error);
+      }
     };
 
     preloadClips();
@@ -196,89 +168,127 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     };
   }, [clips, project?.restPositionClipUrl]);
 
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-  const getRestVideo = () => {
-    const restClipUrl = project?.restPositionClipUrl;
-    let restVideo: HTMLVideoElement | null = null;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
 
-    if (restClipUrl) {
-      for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
-        restVideo = vids.find((v: HTMLVideoElement) => v.src.endsWith(restClipUrl)) || null;
-        if (restVideo) break;
+    const render = () => {
+      const activeVideo = activeVideoRef.current;
+      
+      if (activeVideo && activeVideo.readyState >= 2) {
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const videoWidth = activeVideo.videoWidth;
+        const videoHeight = activeVideo.videoHeight;
+
+        const canvasAspect = canvasWidth / canvasHeight;
+        const videoAspect = videoWidth / videoHeight;
+
+        let drawWidth, drawHeight, offsetX, offsetY;
+
+        if (canvasAspect > videoAspect) {
+          drawWidth = canvasWidth;
+          drawHeight = canvasWidth / videoAspect;
+          offsetX = 0;
+          offsetY = (canvasHeight - drawHeight) / 2;
+        } else {
+          drawHeight = canvasHeight;
+          drawWidth = canvasHeight * videoAspect;
+          offsetX = (canvasWidth - drawWidth) / 2;
+          offsetY = 0;
+        }
+
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+        if (backgroundImageRef.current && removeGreenScreen) {
+          ctx.drawImage(backgroundImageRef.current, 0, 0, canvasWidth, canvasHeight);
+        }
+
+        if (removeGreenScreen) {
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = videoWidth;
+          tempCanvas.height = videoHeight;
+          const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
+          
+          if (tempCtx) {
+            tempCtx.drawImage(activeVideo, 0, 0);
+            const imageData = tempCtx.getImageData(0, 0, videoWidth, videoHeight);
+            const data = imageData.data;
+
+            for (let i = 0; i < data.length; i += 4) {
+              const r = data[i];
+              const g = data[i + 1];
+              const b = data[i + 2];
+
+              if (g > 100 && g > r * 1.5 && g > b * 1.5) {
+                data[i + 3] = 0;
+              }
+            }
+
+            tempCtx.putImageData(imageData, 0, 0);
+            ctx.drawImage(tempCanvas, offsetX, offsetY, drawWidth, drawHeight);
+          }
+        } else {
+          ctx.drawImage(activeVideo, offsetX, offsetY, drawWidth, drawHeight);
+        }
       }
-    }
 
-    if (!restVideo) {
-      const v2Videos = videoElementsRef.current.get("V2");
-      restVideo = v2Videos?.[0] || null;
-    }
+      rafIdRef.current = requestAnimationFrame(render);
+    };
 
-    if (!restVideo) {
-      const firstViseme = Array.from(videoElementsRef.current.keys())[0];
-      restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
-    }
+    rafIdRef.current = requestAnimationFrame(render);
 
-    return restVideo;
-  };
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, [removeGreenScreen]);
 
   useEffect(() => {
     const switchVideo = () => {
-      const now = Date.now();
-      const timeSinceLastSwitch = now - lastVisemeSwitchRef.current;
-      
-      if (timeSinceLastSwitch < MIN_DWELL_MS && currentVideoSrc) {
-        return;
-      }
-
-      if (currentViseme === "V2" || !currentViseme) {
-        const restVideo = getRestVideo();
-        
-        if (!restVideo) {
-          if (activeVideoRef.current) {
-            activeVideoRef.current.pause();
-            activeVideoRef.current.loop = false;
-            activeVideoRef.current = null;
-          }
-          setCurrentVideoSrc("");
-          setNextVideoSrc("");
-          return;
-        }
-
-        if (activeVideoRef.current?.src === restVideo.src && !activeVideoRef.current.paused) {
-          return;
-        }
-
-        if (activeVideoRef.current) {
-          activeVideoRef.current.pause();
-          activeVideoRef.current.loop = false;
-        }
-
-        activeVideoRef.current = restVideo;
-        restVideo.loop = true;
-        restVideo.currentTime = 0;
-        restVideo.play().catch(console.error);
-
-        if (restVideo.src !== currentVideoSrc) {
-          setNextVideoSrc(restVideo.src);
-          lastVisemeSwitchRef.current = now;
-        }
-        return;
-      }
-
       const videos = videoElementsRef.current.get(currentViseme);
       
       if (!videos || videos.length === 0) {
-        setCurrentViseme("V2");
+        const restClipUrl = project?.restPositionClipUrl;
+        let restVideo: HTMLVideoElement | null = null;
+
+        if (restClipUrl) {
+          for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
+            restVideo = vids.find((v: HTMLVideoElement) => v.src.endsWith(restClipUrl)) || null;
+            if (restVideo) break;
+          }
+        }
+
+        if (!restVideo) {
+          const v2Videos = videoElementsRef.current.get("V2");
+          restVideo = v2Videos?.[0] || null;
+        }
+
+        if (!restVideo) {
+          const firstViseme = Array.from(videoElementsRef.current.keys())[0];
+          restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
+        }
+
+        if (restVideo && activeVideoRef.current !== restVideo) {
+          if (activeVideoRef.current) {
+            activeVideoRef.current.pause();
+            activeVideoRef.current.loop = false;
+          }
+          activeVideoRef.current = restVideo;
+          restVideo.loop = true;
+          restVideo.currentTime = 0;
+          restVideo.play().catch(console.error);
+        }
         return;
       }
 
       const currentIndex = variantIndexRef.current.get(currentViseme) || 0;
       const nextVideo = videos[currentIndex % videos.length];
       variantIndexRef.current.set(currentViseme, currentIndex + 1);
-
-      if (activeVideoRef.current?.src === nextVideo.src && !activeVideoRef.current.paused) {
-        return;
-      }
 
       if (activeVideoRef.current) {
         activeVideoRef.current.pause();
@@ -290,30 +300,18 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       nextVideo.currentTime = 0;
       nextVideo.play().catch(console.error);
 
-      if (nextVideo.src !== currentVideoSrc) {
-        setNextVideoSrc(nextVideo.src);
-        lastVisemeSwitchRef.current = now;
-      }
-
       nextVideo.onended = () => {
-        if (!isRecordingRef.current && !isProcessingRef.current) {
+        if (!isRecording && !isProcessing) {
           setCurrentViseme("V2");
         }
       };
     };
 
     switchVideo();
-  }, [currentViseme, clips, project?.restPositionClipUrl]);
-
-  const handleCrossfadeComplete = () => {
-    setCurrentVideoSrc(nextVideoSrc);
-    setNextVideoSrc("");
-  };
+  }, [currentViseme, clips, project?.restPositionClipUrl, isRecording, isProcessing]);
 
   const playVisemeSequence = (timeline: PhonemeSegment[]) => {
     let index = 0;
-    const baseInterval = 150;
-    const adjustedInterval = baseInterval / playbackSpeed;
     const interval = setInterval(() => {
       if (index >= timeline.length) {
         clearInterval(interval);
@@ -327,7 +325,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       setLatency(newLatency);
       onLatencyChange?.(newLatency);
       index++;
-    }, adjustedInterval);
+    }, 150);
   };
 
   useEffect(() => {
@@ -408,24 +406,20 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-        setAudioLevel(Math.round(average));
         
-        if (average > micSensitivity) {
+        if (average > 20) {
           lastSoundTimeRef.current = Date.now();
-          const visemeKeys = Object.keys(VISEME_MAP).filter(k => k !== "V2");
+          const visemeKeys = Object.keys(VISEME_MAP);
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
           setCurrentViseme(randomViseme);
           
           const newLatency = Math.floor(Math.random() * 200) + 280;
           setLatency(newLatency);
           onLatencyChange?.(newLatency);
-        } else {
-          const silenceDuration = Date.now() - lastSoundTimeRef.current;
-          if (silenceDuration > 400) {
-            setCurrentViseme("V2");
-            setLatency(0);
-            onLatencyChange?.(0);
-          }
+        } else if (Date.now() - lastSoundTimeRef.current > 500) {
+          setCurrentViseme("V2");
+          setLatency(0);
+          onLatencyChange?.(0);
         }
         
         audioRafIdRef.current = requestAnimationFrame(checkAudio);
@@ -497,7 +491,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   };
 
   const handleCopyUrl = () => {
-    const url = `${window.location.origin}/stream/avatar-preview/${projectId}`;
+    const url = `${window.location.origin}/stream/avatar-preview`;
     navigator.clipboard.writeText(url);
     toast({
       title: "Copied",
@@ -523,16 +517,12 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             <div className="relative aspect-video rounded-md overflow-hidden border-2" style={{
               backgroundColor: !removeGreenScreen ? "#00FF00" : "#000000",
             }}>
-              <CrossfadeCanvas
+              <canvas
                 ref={canvasRef}
-                currentSrc={currentVideoSrc}
-                nextSrc={nextVideoSrc}
-                onSwapped={handleCrossfadeComplete}
-                fadeMs={60}
                 width={1920}
                 height={1080}
-                removeGreenScreen={removeGreenScreen}
-                backgroundImage={backgroundImageRef.current}
+                className="w-full h-full"
+                data-testid="canvas-preview"
               />
               
               <div className="absolute top-3 right-3 flex items-center gap-2">
@@ -656,7 +646,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                 <Label className="text-sm">Browser Source URL (for OBS)</Label>
                 <div className="flex gap-2">
                   <Input
-                    value={`${window.location.origin}/stream/avatar-preview/${projectId}`}
+                    value={`${window.location.origin}/stream/avatar-preview`}
                     readOnly
                     className="font-mono text-xs"
                     data-testid="input-browser-source-url"
@@ -736,91 +726,13 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               </Button>
 
               {isRecording && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                    <div className="text-sm font-medium text-destructive mb-2">🔴 Live</div>
-                    <div className="text-xs text-muted-foreground">
-                      Speak into your microphone to see real-time viseme sequencing
-                    </div>
-                  </div>
-                  
-                  <div className="p-3 bg-muted rounded-md space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium">Audio Level</span>
-                      <Badge 
-                        variant={audioLevel > micSensitivity ? "default" : "outline"} 
-                        className="font-mono text-xs"
-                        data-testid="badge-audio-level"
-                      >
-                        {audioLevel}
-                      </Badge>
-                    </div>
-                    <div className="h-2 bg-background rounded-full overflow-hidden">
-                      <div 
-                        className="h-full transition-all duration-100"
-                        style={{
-                          width: `${Math.min(100, (audioLevel / 100) * 100)}%`,
-                          backgroundColor: audioLevel > micSensitivity ? 'hsl(var(--chart-2))' : 'hsl(var(--muted-foreground))'
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Threshold: {micSensitivity}</span>
-                      <span className="font-mono">{audioLevel > micSensitivity ? '✓ Detected' : '○ Silent'}</span>
-                    </div>
+                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <div className="text-sm font-medium text-destructive mb-2">🔴 Live</div>
+                  <div className="text-xs text-muted-foreground">
+                    Speak into your microphone to see real-time viseme sequencing
                   </div>
                 </div>
               )}
-
-              <div className="space-y-3 pt-4 border-t">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <Mic className="w-4 h-4 text-muted-foreground" />
-                    <Label className="text-sm">Microphone Sensitivity</Label>
-                  </div>
-                  <Badge variant="outline" className="font-mono text-xs" data-testid="badge-mic-sensitivity">
-                    {micSensitivity}
-                  </Badge>
-                </div>
-                <Slider
-                  value={[micSensitivity]}
-                  onValueChange={(values) => setMicSensitivity(values[0])}
-                  min={10}
-                  max={80}
-                  step={5}
-                  className="w-full"
-                  data-testid="slider-mic-sensitivity"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>10 (Very Sensitive)</span>
-                  <span>80 (Less Sensitive)</span>
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-4 border-t">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-2">
-                    <Gauge className="w-4 h-4 text-muted-foreground" />
-                    <Label className="text-sm">Playback Speed</Label>
-                  </div>
-                  <Badge variant="outline" className="font-mono text-xs" data-testid="badge-playback-speed">
-                    {playbackSpeed.toFixed(1)}x
-                  </Badge>
-                </div>
-                <Slider
-                  value={[playbackSpeed]}
-                  onValueChange={(values) => setPlaybackSpeed(values[0])}
-                  min={0.5}
-                  max={2.0}
-                  step={0.1}
-                  className="w-full"
-                  data-testid="slider-playback-speed"
-                />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>0.5x (Slower)</span>
-                  <span>2.0x (Faster)</span>
-                </div>
-              </div>
             </CardContent>
           </Card>
 

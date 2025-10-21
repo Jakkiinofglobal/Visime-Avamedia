@@ -3,15 +3,10 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Upload, X, Film, Plus, Check, Star, Zap } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Upload, X, Film, Plus, Check, Star } from "lucide-react";
 import { VISEME_MAP, VisemeId, VisemeClip, Project } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-
-const QUICK_MODE_VISEMES: VisemeId[] = ["V3", "V6", "V7", "V14", "V8", "V9", "V12", "V4", "V5"];
-const QUICK_MODE_LABELS = ["Ahh", "Mee", "Foe", "Tie", "Loo", "Wuh", "Shhh", "Aeh", "Ayy"];
 
 interface VisemeClipUploaderProps {
   onContinue?: () => void;
@@ -20,7 +15,6 @@ interface VisemeClipUploaderProps {
 
 export default function VisemeClipUploader({ onContinue, projectId }: VisemeClipUploaderProps) {
   const { toast } = useToast();
-  const [quickMode, setQuickMode] = useState(false);
 
   const { data: project } = useQuery<Project>({
     queryKey: ["/api/projects", projectId],
@@ -107,22 +101,6 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
     },
   });
 
-  const removeRestPoseMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("PATCH", `/api/projects/${projectId}`, {
-        restPositionClipUrl: null,
-      });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Rest position removed",
-        description: "You can now upload a new rest position video",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
-    },
-  });
-
   const handleFileSelect = (visemeId: string, file: File) => {
     if (!projectId) return;
     
@@ -142,7 +120,6 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
     return acc;
   }, {} as Record<string, VisemeClip[]>);
 
-  const visemesToShow = quickMode ? QUICK_MODE_VISEMES : Object.keys(VISEME_MAP);
   const totalClips = clips.length;
   const visemesWithClips = Object.keys(clipsByViseme).length;
 
@@ -193,33 +170,22 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
                 <div className="text-sm font-medium">Rest position uploaded</div>
                 <div className="text-xs text-muted-foreground">Avatar will return to this state when idle</div>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadRestPositionMutation.mutate(file);
-                  }}
-                  className="hidden"
-                  id="replace-rest-position"
-                  data-testid="input-replace-rest-position"
-                />
-                <label htmlFor="replace-rest-position">
-                  <Button variant="outline" size="sm" asChild data-testid="button-replace-rest-position">
-                    <span>Replace</span>
-                  </Button>
-                </label>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => removeRestPoseMutation.mutate()}
-                  data-testid="button-remove-rest-position"
-                >
-                  <X className="w-4 h-4 mr-1" />
-                  Remove
+              <input
+                type="file"
+                accept="video/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadRestPositionMutation.mutate(file);
+                }}
+                className="hidden"
+                id="replace-rest-position"
+                data-testid="input-replace-rest-position"
+              />
+              <label htmlFor="replace-rest-position">
+                <Button variant="outline" size="sm" asChild data-testid="button-replace-rest-position">
+                  <span>Replace</span>
                 </Button>
-              </div>
+              </label>
             </div>
           )}
         </CardContent>
@@ -240,33 +206,9 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
             </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between gap-4 p-4 bg-muted/50 rounded-md">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-chart-3/20 flex items-center justify-center flex-shrink-0">
-                <Zap className="w-5 h-5 text-chart-3" />
-              </div>
-              <div>
-                <Label htmlFor="quick-mode" className="text-sm font-medium cursor-pointer" data-testid="label-quick-mode">
-                  Quick Mode
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  {quickMode ? "Simplified: 9 basic phonemes" : "Advanced: All 14 visemes"}
-                </p>
-              </div>
-            </div>
-            <Switch
-              id="quick-mode"
-              checked={quickMode}
-              onCheckedChange={setQuickMode}
-              data-testid="switch-quick-mode"
-            />
-          </div>
-
+        <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {visemesToShow.map((visemeId, idx) => {
-              const data = VISEME_MAP[visemeId as VisemeId];
-              const displayLabel = quickMode ? QUICK_MODE_LABELS[idx] : data.label;
+            {Object.entries(VISEME_MAP).map(([visemeId, data]) => {
               const visemeClips = clipsByViseme[visemeId] || [];
               
               return (
@@ -282,7 +224,7 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
                           color: data.color,
                         }}
                       >
-                        {displayLabel}
+                        {data.label}
                       </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground font-mono">
@@ -390,7 +332,7 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
 
           <div className="flex items-center justify-between pt-6 mt-6 border-t">
             <div className="text-sm text-muted-foreground">
-              {visemesWithClips} of {visemesToShow.length} visemes have clips
+              {visemesWithClips} of {Object.keys(VISEME_MAP).length} visemes have clips
             </div>
             <Button
               size="lg"

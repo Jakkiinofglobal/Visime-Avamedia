@@ -24,7 +24,7 @@ export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
       setIsRecording(false);
       setHasRecording(true);
       console.log("Recording completed");
-    }, 5000);
+    }, 3000);
   };
 
   const handleContinue = () => {
@@ -121,7 +121,7 @@ export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
             <div className="space-y-3">
               <div className="flex items-center gap-3 p-3 bg-chart-2/10 border border-chart-2/20 rounded-md">
                 <div className="w-2 h-2 rounded-full bg-chart-2" />
-                <span className="text-sm font-medium">Recording complete (5.0s)</span>
+                <span className="text-sm font-medium">Recording complete (3.2s)</span>
               </div>
               <Button
                 variant="outline"

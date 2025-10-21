@@ -13,35 +13,6 @@ This application allows users to create real-time video avatars by:
 
 ## Recent Changes
 
-**2025-10-21**: Smooth Crossfade Blending System ✅
-- **Smooth Video Transitions**: Implemented 120ms alpha-blend crossfade between viseme clips
-  - Created CrossfadeCanvas component with dual video element approach
-  - Eliminates jumpy mouth movements with smooth opacity transitions
-  - Properly times crossfade to start when next video is ready (no instant switches)
-  - Maintains aspect ratio and green-screen processing during blends
-- **Performance Optimization**: Reused single offscreen canvas for green-screen chroma keying
-  - Reduces per-frame allocations and GC pressure
-  - Properly sized to video dimensions (1920x1080)
-  - CPU-intensive but acceptable for current milestone
-- **Microphone Sensitivity Improvements**: Enhanced real-time audio detection
-  - Lowered threshold from 60 to 25 for better responsiveness
-  - Added sensitivity slider (10-80 range) for user control
-  - Real-time audio level display and visual detection feedback
-  - Progress bar turns green when sound detected
-- **Minimum Dwell Time**: 120ms guard prevents rapid jumpy viseme switching
-- **Virtual Camera Fixed**: Canvas ref properly wired to enable OBS streaming via captureStream(30)
-- **Architect Review Notes**:
-  - Future optimizations: Add stale guards for rapid nextSrc updates, prevent redundant video src reassignment
-  - Production concerns: Add file upload validation (MIME/size limits), authentication for upload endpoints
-  - VirtualCameraStream route needs WebSocket/SSE integration for live animation
-  - Quick Mode needs viseme fallback mapping (14→9) during playback
-
-**2025-10-21**: UX Polish and Quick Mode
-- **Recording Duration**: Increased from 3.2s to 5s for slower speech
-- **Playback Speed Slider**: Added 0.5x-2.0x speed control for animation timing
-- **Virtual Camera Route**: Created `/stream/avatar-preview/:projectId` for OBS (static rest position only)
-- **Quick Mode Toggle**: Added simplified 9-phoneme upload mode vs 14-viseme advanced mode
-
 **2025-10-20**: Cloudinary Integration for Vercel Deployment ✅
 - **Cloud File Storage**: Migrated from local /uploads to Cloudinary
   - All video, audio, and image uploads now stored in Cloudinary
