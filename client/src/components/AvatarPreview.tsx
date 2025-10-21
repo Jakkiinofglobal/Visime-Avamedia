@@ -30,6 +30,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [virtualCameraActive, setVirtualCameraActive] = useState(false);
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [micSensitivity, setMicSensitivity] = useState(25);
+  const [audioLevel, setAudioLevel] = useState(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   
@@ -410,8 +412,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+        setAudioLevel(Math.round(average));
         
-        if (average > 60) {
+        if (average > micSensitivity) {
           lastSoundTimeRef.current = Date.now();
           const visemeKeys = Object.keys(VISEME_MAP);
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
@@ -730,13 +733,66 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               </Button>
 
               {isRecording && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                  <div className="text-sm font-medium text-destructive mb-2">🔴 Live</div>
-                  <div className="text-xs text-muted-foreground">
-                    Speak into your microphone to see real-time viseme sequencing
+                <div className="space-y-3">
+                  <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                    <div className="text-sm font-medium text-destructive mb-2">🔴 Live</div>
+                    <div className="text-xs text-muted-foreground">
+                      Speak into your microphone to see real-time viseme sequencing
+                    </div>
+                  </div>
+                  
+                  <div className="p-3 bg-muted rounded-md space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium">Audio Level</span>
+                      <Badge 
+                        variant={audioLevel > micSensitivity ? "default" : "outline"} 
+                        className="font-mono text-xs"
+                        data-testid="badge-audio-level"
+                      >
+                        {audioLevel}
+                      </Badge>
+                    </div>
+                    <div className="h-2 bg-background rounded-full overflow-hidden">
+                      <div 
+                        className="h-full transition-all duration-100"
+                        style={{
+                          width: `${Math.min(100, (audioLevel / 100) * 100)}%`,
+                          backgroundColor: audioLevel > micSensitivity ? 'hsl(var(--chart-2))' : 'hsl(var(--muted-foreground))'
+                        }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Threshold: {micSensitivity}</span>
+                      <span className="font-mono">{audioLevel > micSensitivity ? '✓ Detected' : '○ Silent'}</span>
+                    </div>
                   </div>
                 </div>
               )}
+
+              <div className="space-y-3 pt-4 border-t">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <Mic className="w-4 h-4 text-muted-foreground" />
+                    <Label className="text-sm">Microphone Sensitivity</Label>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-xs" data-testid="badge-mic-sensitivity">
+                    {micSensitivity}
+                  </Badge>
+                </div>
+                <Slider
+                  value={[micSensitivity]}
+                  onValueChange={(values) => setMicSensitivity(values[0])}
+                  min={10}
+                  max={80}
+                  step={5}
+                  className="w-full"
+                  data-testid="slider-mic-sensitivity"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>10 (Very Sensitive)</span>
+                  <span>80 (Less Sensitive)</span>
+                </div>
+              </div>
 
               <div className="space-y-3 pt-4 border-t">
                 <div className="flex items-center justify-between gap-4">

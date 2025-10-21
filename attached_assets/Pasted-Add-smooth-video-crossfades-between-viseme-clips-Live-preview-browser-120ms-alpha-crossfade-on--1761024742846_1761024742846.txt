@@ -1,0 +1,271 @@
+Add smooth video crossfades between viseme clips:
+
+Live preview (browser): 120ms alpha crossfade on clip switches.
+
+Exports (server): FFmpeg xfade + acrossfade for video + audio.
+
+1) Frontend: Canvas crossfade for live preview
+
+Create client/src/components/CrossfadeCanvas.tsx:
+
+import { useEffect, useRef, useState } from "react";
+
+export default function CrossfadeCanvas({
+  currentSrc,
+  nextSrc,
+  onSwapped,
+  fadeMs = 120,
+  width = 1280,
+  height = 720,
+}: {
+  currentSrc: string;
+  nextSrc: string;      // set to non-empty URL to trigger fade
+  onSwapped?: () => void;
+  fadeMs?: number;
+  width?: number;
+  height?: number;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const vA = useRef<HTMLVideoElement>(document.createElement("video"));
+  const vB = useRef<HTMLVideoElement>(document.createElement("video"));
+  const [phase, setPhase] = useState<"idle"|"fading">("idle");
+
+  for (const v of [vA.current, vB.current]) {
+    v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto";
+    v.crossOrigin = "anonymous";
+  }
+
+  // draw current clip continuously
+  useEffect(() => {
+    let raf = 0;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const tick = () => {
+      if (!vA.current.paused && phase === "idle") {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(vA.current, 0, 0, width, height);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [phase, width, height]);
+
+  // load initial current clip
+  useEffect(() => {
+    if (!currentSrc) return;
+    vA.current.src = currentSrc;
+    vA.current.oncanplay = () => vA.current.play();
+  }, [currentSrc]);
+
+  // fade to next clip when nextSrc changes
+  useEffect(() => {
+    if (!nextSrc) return;
+    let raf = 0;
+    const ctx = canvasRef.current!.getContext("2d")!;
+    const start = performance.now();
+
+    vB.current.src = nextSrc;
+    vB.current.oncanplay = async () => {
+      await vB.current.play();
+      setPhase("fading");
+      const loop = () => {
+        const t = performance.now() - start;
+        const a = Math.min(1, t / fadeMs); // 0->1
+        ctx.clearRect(0, 0, width, height);
+
+        ctx.globalAlpha = 1 - a;
+        ctx.drawImage(vA.current, 0, 0, width, height);
+
+        ctx.globalAlpha = a;
+        ctx.drawImage(vB.current, 0, 0, width, height);
+
+        ctx.globalAlpha = 1;
+        if (a < 1) raf = requestAnimationFrame(loop);
+        else {
+          // swap references
+          const tmp = vA.current; vA.current = vB.current; vB.current = tmp;
+          setPhase("idle");
+          onSwapped?.();
+        }
+      };
+      raf = requestAnimationFrame(loop);
+    };
+
+    return () => cancelAnimationFrame(raf);
+  }, [nextSrc, fadeMs, width, height, onSwapped]);
+
+  return <canvas ref={canvasRef} width={width} height={height} className="rounded-lg border" />;
+}
+
+
+Integrate into your preview/sequencer component (where you currently switch clip URLs):
+
+// Example inside AvatarPreview or Sequencer component:
+<CrossfadeCanvas
+  currentSrc={currentClipUrl}
+  nextSrc={shouldSwitch ? nextClipUrl : ""}
+  fadeMs={120}
+/>
+
+
+Sequencer rule tweaks (important to reduce jumpiness):
+
+MIN_DWELL = 120ms (don’t switch viseme faster than this)
+
+VARIANT_COOLDOWN = 250ms (don’t swap variants too often)
+
+Switch only when viseme dominance holds for e.g. 80–120ms (hysteresis)
+
+2) Backend: FFmpeg crossfades for exports
+
+Install (in the server environment):
+
+# if not present already
+sudo apt-get update && sudo apt-get install -y ffmpeg
+
+
+(On Replit, ffmpeg is usually available. If not, install via Nix or use Render’s apt config.)
+
+Create server/routes/exportRoutes.ts:
+
+import express from "express";
+import { spawn } from "node:child_process";
+import path from "path";
+
+const router = express.Router();
+
+/**
+ * POST /api/export
+ * body: {
+ *   clips: [{ url: string, duration?: number }...], // public URLs or local paths
+ *   fadeMs?: number                                  // default 120
+ * }
+ * Returns: MP4 stream (video/mp4)
+ */
+router.post("/export", async (req, res) => {
+  try {
+    const { clips, fadeMs = 120 } = req.body as {
+      clips: { url: string; duration?: number }[];
+      fadeMs?: number;
+    };
+    if (!clips || clips.length < 2) {
+      return res.status(400).json({ error: "Need at least 2 clips" });
+    }
+
+    // Build args: -i for each clip
+    const inputs: string[] = [];
+    const inputArgs: string[] = [];
+    clips.forEach(c => { inputArgs.push("-i", c.url); });
+
+    const fadeSec = Math.max(0.04, fadeMs / 1000); // min 40ms
+    // Build filter_complex with chained xfade & acrossfade
+    // Example for N clips: (((v0 xfade v1) xfade v2) xfade v3)...
+    // For simplicity, we crossfade at the end of each clip (offset=clip_duration - fade)
+    // If duration not provided, let xfade start at stream end (works but better with durations).
+
+    // Create labels
+    const vLabels = clips.map((_, i) => `[v${i}]`);
+    const aLabels = clips.map((_, i) => `[a${i}]`);
+    const pre = clips.map((_, i) =>
+      `[${i}:v]fps=30,scale=1920:1080:flags=lanczos,format=yuv420p[v${i}];[${i}:a]anull[a${i}]`
+    ).join(";");
+
+    // chain xfade
+    let vChain = `${vLabels[0]}${vLabels[1]}xfade=transition=fade:duration=${fadeSec}:offset=EOF[vx1]`;
+    let aChain = `${aLabels[0]}${aLabels[1]}acrossfade=d=${fadeSec}:c1=tri:c2=tri[ax1]`;
+    for (let i = 2; i < clips.length; i++) {
+      vChain = `[vx${i-1}]${vLabels[i]}xfade=transition=fade:duration=${fadeSec}:offset=EOF[vx${i}]`;
+      aChain = `[ax${i-1}]${aLabels[i]}acrossfade=d=${fadeSec}:c1=tri:c2=tri[ax${i}]`;
+    }
+    const vOut = `[vx${clips.length - 1}]`;
+    const aOut = `[ax${clips.length - 1}]`;
+
+    const filter = `${pre};${vChain};${aChain}`;
+
+    const args = [
+      ...inputArgs,
+      "-filter_complex", filter,
+      "-map", vOut, "-map", aOut,
+      "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
+      "-c:a", "aac", "-b:a", "128k",
+      "-movflags", "frag_keyframe+empty_moov",
+      "-f", "mp4", "pipe:1",
+    ];
+
+    res.setHeader("Content-Type", "video/mp4");
+    const ff = spawn("ffmpeg", ["-y", ...args]);
+    ff.stdout.pipe(res);
+    ff.stderr.on("data", d => process.stderr.write(d));
+    ff.on("close", (code) => {
+      if (code !== 0) console.error("ffmpeg exited with code", code);
+    });
+  } catch (e: any) {
+    console.error(e);
+    res.status(500).json({ error: e?.message || "export failed" });
+  }
+});
+
+export default router;
+
+
+Wire it up in your server entry (e.g., server/index.ts):
+
+import exportRoutes from "./routes/exportRoutes";
+app.use("/api", exportRoutes);
+
+
+Client call example (export the current viseme timeline):
+
+const resp = await fetch(`${API}/api/export`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    fadeMs: 120,
+    clips: [
+      { url: "https://.../rest%20pose%20ef.mp4" },
+      { url: "https://.../mpb.mp4" },
+      { url: "https://.../s%20x.mp4" },
+      { url: "https://.../o%20a%20ah.mp4" },
+      { url: "https://.../t.mp4" },
+    ],
+  }),
+});
+const blob = await resp.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement("a");
+a.href = url; a.download = "viseme_export.mp4"; a.click();
+
+3) Sequencer smoothing (quick wins)
+
+Implement these constants and rules where you schedule viseme switches:
+
+const MIN_DWELL = 0.12;       // 120 ms minimum per viseme
+const VARIANT_COOLDOWN = 0.25;// 250 ms before changing variant again
+
+let lastViseme: string | null = null;
+let lastChange = 0;
+let lastVariantTime: Record<string, number> = {};
+
+function shouldSwitch(nextViseme: string, now: number) {
+  if (lastViseme === null) return true;
+  const dwell = now - lastChange;
+  return nextViseme !== lastViseme && dwell >= MIN_DWELL;
+}
+
+function pickVariant(visemeId: string, now: number) {
+  const t = lastVariantTime[visemeId] ?? 0;
+  if (now - t < VARIANT_COOLDOWN) return "keep";
+  lastVariantTime[visemeId] = now;
+  // pick visually closest variant here if you track features
+  return "new";
+}
+
+4) Acceptance criteria
+
+Switching visemes in preview crossfades over ~120ms with no “hard pop.”
+
+Exported MP4 uses xfade + acrossfade at joins (video and audio both smooth).
+
+No switch faster than 120ms (MIN_DWELL) to avoid flicker.
+
+Variant swaps don’t ping-pong (cooldown ≥250ms).
