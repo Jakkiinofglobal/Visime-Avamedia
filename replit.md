@@ -13,6 +13,18 @@ This application allows users to create real-time video avatars by:
 
 ## Recent Changes
 
+**2025-10-21**: UX Polish and Quick Mode ⚠️ (Needs Review)
+- **Recording Duration**: Increased from 3.2s to 5s for slower speech
+- **Microphone Sensitivity**: Threshold increased from 20 to 60 to reduce false detections
+- **Playback Speed Slider**: Added 0.5x-2.0x speed control for animation timing
+- **Virtual Camera Route**: Created `/stream/avatar-preview/:projectId` for OBS (⚠️ Currently shows static rest position only - needs WebSocket integration for live animation)
+- **Quick Mode Toggle**: Added simplified 9-phoneme upload mode vs 14-viseme advanced mode (⚠️ Needs fallback mapping at playback time)
+- **Architect Review Notes**:
+  - VirtualCameraStream requires WebSocket/SSE integration to sync with main app for live animation
+  - Quick Mode needs viseme fallback mapping (14→9) during playback
+  - Production concerns: Add file upload validation (MIME/size limits), authentication for upload endpoints
+  - Missing data-testid attributes on new controls (speed slider tested via code review)
+
 **2025-10-20**: Cloudinary Integration for Vercel Deployment ✅
 - **Cloud File Storage**: Migrated from local /uploads to Cloudinary
   - All video, audio, and image uploads now stored in Cloudinary

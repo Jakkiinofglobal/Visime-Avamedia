@@ -10,7 +10,8 @@ import { VISEME_MAP, VisemeId, VisemeClip, Project } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-const QUICK_MODE_VISEMES: VisemeId[] = ["V3", "V6", "V7", "V14", "V8", "V9", "V12", "V3", "V5"];
+const QUICK_MODE_VISEMES: VisemeId[] = ["V3", "V6", "V7", "V14", "V8", "V9", "V12", "V4", "V5"];
+const QUICK_MODE_LABELS = ["Ahh", "Mee", "Foe", "Tie", "Loo", "Wuh", "Shhh", "Aeh", "Ayy"];
 
 interface VisemeClipUploaderProps {
   onContinue?: () => void;
@@ -238,8 +239,7 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {visemesToShow.map((visemeId, idx) => {
               const data = VISEME_MAP[visemeId as VisemeId];
-              const quickModeLabels = ["Ahh", "Mee", "Foe", "Tie", "Loo", "Wuh", "Shhh", "Ohh", "Ayy"];
-              const displayLabel = quickMode ? quickModeLabels[idx] : data.label;
+              const displayLabel = quickMode ? QUICK_MODE_LABELS[idx] : data.label;
               const visemeClips = clipsByViseme[visemeId] || [];
               
               return (
