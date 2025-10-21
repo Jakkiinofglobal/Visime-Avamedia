@@ -47,7 +47,7 @@ On the configuration page, enter these settings:
 - **Runtime**: `Node`
 
 **Build & Deploy Settings:**
-- **Build Command**: `npm install && npm run build`
+- **Build Command**: `npm install && npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist`
 - **Start Command**: `npm start`
 
 **Plan:**
