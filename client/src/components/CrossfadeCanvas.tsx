@@ -93,9 +93,6 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
 
       if (backgroundImage && removeGreenScreen) {
         ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
-      } else if (!removeGreenScreen && (!currentSrc || vA.current.paused || vA.current.readyState < 2)) {
-        ctx.fillStyle = "#00FF00";
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       }
 
       if (!vA.current.paused && vA.current.readyState >= 2 && phase === "idle" && currentSrc) {

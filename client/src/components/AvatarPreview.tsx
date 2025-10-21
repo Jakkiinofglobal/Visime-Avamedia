@@ -231,13 +231,37 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       }
 
       if (currentViseme === "V2" || !currentViseme) {
+        const restVideo = getRestVideo();
+        
+        if (!restVideo) {
+          if (activeVideoRef.current) {
+            activeVideoRef.current.pause();
+            activeVideoRef.current.loop = false;
+            activeVideoRef.current = null;
+          }
+          setCurrentVideoSrc("");
+          setNextVideoSrc("");
+          return;
+        }
+
+        if (activeVideoRef.current?.src === restVideo.src && !activeVideoRef.current.paused) {
+          return;
+        }
+
         if (activeVideoRef.current) {
           activeVideoRef.current.pause();
           activeVideoRef.current.loop = false;
-          activeVideoRef.current = null;
         }
-        setCurrentVideoSrc("");
-        setNextVideoSrc("");
+
+        activeVideoRef.current = restVideo;
+        restVideo.loop = true;
+        restVideo.currentTime = 0;
+        restVideo.play().catch(console.error);
+
+        if (restVideo.src !== currentVideoSrc) {
+          setNextVideoSrc(restVideo.src);
+          lastVisemeSwitchRef.current = now;
+        }
         return;
       }
 
