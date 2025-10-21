@@ -7,11 +7,46 @@ A real-time video avatar application that sequences uploaded green-screen mouth-
 This application allows users to create real-time video avatars by:
 1. Creating a project with custom FPS and resolution settings
 2. Recording a training sentence for phoneme alignment
-3. Uploading green-screen video clips for 14 different viseme (mouth shape) categories
+3. Uploading green-screen video clips for 9 simplified viseme (mouth shape) categories
 4. Testing with text-to-speech or live microphone input
-5. Streaming the output to OBS or other streaming software
+5. Adjusting playback speed and microphone sensitivity for optimal performance
+6. Manually triggering specific visemes for precise control
+7. Streaming the output to OBS or other streaming software
 
 ## Recent Changes
+
+**2025-10-21**: Simplified 9-Viseme System & Enhanced Controls ✅
+- **BREAKING CHANGE**: Viseme system refactored from 14 to 9 categories
+  - Previous V1-V14 viseme IDs are no longer supported
+  - Existing projects will need to re-upload clips with new viseme categories
+  - Server now validates and rejects legacy viseme IDs on upload
+- **Simplified Viseme Categories**: Reduced from 14 to 9 easy-to-understand mouth shapes
+  - Baa (Closed) - m, b, p, sil sounds like "mom, bob, pop" + silence/rest
+  - Mee (Smile) - iy, ih, ix, ae sounds like "see, bit, cat"
+  - Foe (Teeth) - f, v sounds like "fun, van"
+  - Tie (Tongue) - t, d, n, s, z, th, dh sounds like "tie, dog, no"
+  - Loo (Round) - uw, uh, ux, ow sounds like "blue, book, go"
+  - Wuh (Glide) - w, r, l, y, er, hh sounds like "wow, red, let"
+  - Shhh (Hiss) - sh, zh, ch, jh sounds like "shoe, measure"
+  - Ohh (Open) - aa, ah, ao, ax, aw sounds like "hot, father"
+  - Ayy (Mid) - eh, ey, ay, k, g sounds like "say, bed, sky"
+  - Comprehensive phoneme coverage for ARPABET and common variants
+  - Example words shown for each viseme in the UI
+- **Automatic Rest Position**: Rest clips auto-loop when avatar is idle (no sound/text)
+  - No manual rest selection needed - rest position video loops continuously
+  - Returns to rest automatically after speaking
+  - 500ms silence threshold before returning to rest
+- **Playback Speed Control**: Slider to adjust clip playback rate (0.5x - 2.0x)
+  - Affects both text-to-speech and microphone input
+  - Real-time adjustment during playback
+- **Mic Sensitivity Control**: Slider to fine-tune microphone detection (10-100)
+  - Lower values = more sensitive (picks up quiet sounds)
+  - Higher values = less sensitive (only loud sounds trigger)
+- **Manual Viseme Triggers**: Grid of 9 buttons to manually trigger specific mouth shapes
+  - Color-coded buttons matching viseme colors
+  - Useful for testing individual clips
+  - Can be used during streams for precise control
+- **Enhanced UI**: Viseme examples shown in timeline and active stream display
 
 **2025-10-20**: Cloudinary Integration for Vercel Deployment ✅
 - **Cloud File Storage**: Migrated from local /uploads to Cloudinary
@@ -129,7 +164,9 @@ This application allows users to create real-time video avatars by:
 ### Data Model (`shared/schema.ts`)
 - **Project**: Project configuration (name, FPS, resolution, training audio, phoneme timeline, rest position clip URL, background image URL)
 - **VisemeClip**: Video clip metadata (project ID, viseme ID, URL, duration, variant index)
-- **VISEME_MAP**: 14 viseme categories mapping phonemes to mouth shapes (V1-V14)
+- **VISEME_MAP**: 9 simplified viseme categories mapping phonemes to mouth shapes (Baa, Mee, Foe, Tie, Loo, Wuh, Shhh, Ohh, Ayy)
+  - Each viseme includes: label, phonemes array, color, and example words
+- **VISEME_MAP_LEGACY**: Original 14 viseme categories (kept for backwards compatibility)
 
 ## Tech Stack
 

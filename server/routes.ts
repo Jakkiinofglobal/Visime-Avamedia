@@ -31,7 +31,7 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
 });
 
-// Simple phoneme-to-viseme mapper
+// Simple phoneme-to-viseme mapper using the new 9-viseme system
 function phonemeToViseme(phoneme: string): string {
   const lowerPhoneme = phoneme.toLowerCase();
   
@@ -41,7 +41,9 @@ function phonemeToViseme(phoneme: string): string {
     }
   }
   
-  return "V2"; // Default to rest/neutral
+  // Default to Baa (closed/rest position) for unmapped phonemes
+  // This includes silence markers and unknown phonemes
+  return "Baa";
 }
 
 // Basic grapheme-to-phoneme converter (simplified)
@@ -161,15 +163,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const audioUrl = req.file.path; // Cloudinary URL
       
       // Simulate phoneme alignment (in production, use WhisperX or Vosk)
+      // Using new simplified 9-viseme system
       const mockTimeline = [
-        { phoneme: "dh", start: 0.0, end: 0.15, viseme: "V11" },
-        { phoneme: "ah", start: 0.15, end: 0.30, viseme: "V3" },
-        { phoneme: "k", start: 0.30, end: 0.45, viseme: "V14" },
-        { phoneme: "w", start: 0.45, end: 0.60, viseme: "V8" },
-        { phoneme: "ih", start: 0.60, end: 0.75, viseme: "V6" },
-        { phoneme: "k", start: 0.75, end: 0.90, viseme: "V14" },
-        { phoneme: "b", start: 0.90, end: 1.05, viseme: "V1" },
-        { phoneme: "r", start: 1.05, end: 1.20, viseme: "V13" },
+        { phoneme: "dh", start: 0.0, end: 0.15, viseme: "Tie" },    // th sound
+        { phoneme: "ah", start: 0.15, end: 0.30, viseme: "Ohh" },   // open vowel
+        { phoneme: "k", start: 0.30, end: 0.45, viseme: "Ayy" },    // k/g sound
+        { phoneme: "w", start: 0.45, end: 0.60, viseme: "Wuh" },    // w glide
+        { phoneme: "ih", start: 0.60, end: 0.75, viseme: "Mee" },   // smile vowel
+        { phoneme: "k", start: 0.75, end: 0.90, viseme: "Ayy" },    // k/g sound
+        { phoneme: "b", start: 0.90, end: 1.05, viseme: "Baa" },    // closed lips
+        { phoneme: "r", start: 1.05, end: 1.20, viseme: "Wuh" },    // r glide
       ];
 
       const project = await storage.updateProject(req.params.id, {
@@ -240,6 +243,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!visemeId) {
         return res.status(400).json({ error: "visemeId is required" });
+      }
+
+      // Validate that visemeId is one of the new 9-viseme categories
+      // This prevents legacy V1-V14 IDs from being uploaded
+      const validVisemeIds = Object.keys(VISEME_MAP);
+      if (!validVisemeIds.includes(visemeId)) {
+        return res.status(400).json({ 
+          error: `Invalid visemeId. Must be one of: ${validVisemeIds.join(", ")}` 
+        });
       }
 
       const clipUrl = req.file.path; // Cloudinary URL

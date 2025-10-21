@@ -43,7 +43,67 @@ export interface PhonemeSegment {
   viseme: string;
 }
 
+// Simplified 9-viseme system for easier avatar creation
+// Comprehensive phoneme coverage for ARPABET and common variants
 export const VISEME_MAP = {
+  Baa: { 
+    label: "Baa (Closed)", 
+    phonemes: ["m", "b", "p", "sil"], // sil = silence/rest position
+    color: "hsl(260, 75%, 62%)", 
+    example: "mom, bob, pop" 
+  },
+  Mee: { 
+    label: "Mee (Smile)", 
+    phonemes: ["iy", "ih", "ix", "ae", "i"], 
+    color: "hsl(142, 70%, 45%)", 
+    example: "see, bit, cat" 
+  },
+  Foe: { 
+    label: "Foe (Teeth)", 
+    phonemes: ["f", "v"], 
+    color: "hsl(35, 85%, 55%)", 
+    example: "fun, van" 
+  },
+  Tie: { 
+    label: "Tie (Tongue)", 
+    phonemes: ["t", "d", "n", "s", "z", "th", "dh"], 
+    color: "hsl(200, 70%, 55%)", 
+    example: "tie, dog, no" 
+  },
+  Loo: { 
+    label: "Loo (Round)", 
+    phonemes: ["uw", "uh", "ux", "ow", "u", "oo"], 
+    color: "hsl(320, 65%, 58%)", 
+    example: "blue, book, go" 
+  },
+  Wuh: { 
+    label: "Wuh (Glide)", 
+    phonemes: ["w", "r", "l", "y", "er", "hh"], 
+    color: "hsl(180, 60%, 50%)", 
+    example: "wow, red, let" 
+  },
+  Shhh: { 
+    label: "Shhh (Hiss)", 
+    phonemes: ["sh", "zh", "ch", "jh"], 
+    color: "hsl(280, 65%, 60%)", 
+    example: "shoe, measure" 
+  },
+  Ohh: { 
+    label: "Ohh (Open)", 
+    phonemes: ["aa", "ah", "ao", "ax", "aw", "a", "o"], 
+    color: "hsl(40, 75%, 55%)", 
+    example: "hot, father" 
+  },
+  Ayy: { 
+    label: "Ayy (Mid)", 
+    phonemes: ["eh", "ey", "ay", "k", "g", "ng"], 
+    color: "hsl(15, 85%, 60%)", 
+    example: "say, bed, sky" 
+  },
+} as const;
+
+// Legacy 14-viseme system (kept for backwards compatibility)
+export const VISEME_MAP_LEGACY = {
   V1: { label: "Closed", phonemes: ["m", "b", "p"], color: "hsl(260, 75%, 62%)" },
   V2: { label: "Rest/Neutral", phonemes: ["sil"], color: "hsl(220, 10%, 50%)" },
   V3: { label: "AA/AH", phonemes: ["aa", "ah", "ao"], color: "hsl(142, 70%, 45%)" },

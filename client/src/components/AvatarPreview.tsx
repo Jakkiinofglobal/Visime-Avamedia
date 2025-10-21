@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Mic, Square, Play, Download, Copy, Upload, Image as ImageIcon } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Mic, Square, Play, Download, Copy, Image as ImageIcon } from "lucide-react";
 import { VISEME_MAP, VisemeClip, PhonemeSegment, Project } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,11 +24,14 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [testText, setTestText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [removeGreenScreen, setRemoveGreenScreen] = useState(false);
-  const [currentViseme, setCurrentViseme] = useState("V2");
+  const [currentViseme, setCurrentViseme] = useState("Baa");
   const [latency, setLatency] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [virtualCameraActive, setVirtualCameraActive] = useState(false);
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState([1.0]);
+  const [micSensitivity, setMicSensitivity] = useState([20]);
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   
@@ -111,6 +115,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         video.muted = true;
         video.loop = false;
         video.preload = "auto";
+        video.playbackRate = playbackSpeed[0];
 
         await new Promise<void>((resolve) => {
           video.addEventListener("canplay", () => resolve(), { once: true });
@@ -133,17 +138,12 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
       if (restClipUrl) {
         for (const [visemeId, videos] of Array.from(videoMap.entries())) {
-          restVideo = videos.find((v: HTMLVideoElement) => v.src.endsWith(restClipUrl)) || null;
+          restVideo = videos.find((v: HTMLVideoElement) => v.src.includes(restClipUrl)) || null;
           if (restVideo) break;
         }
       }
 
-      if (!restVideo) {
-        const v2Videos = videoMap.get("V2");
-        restVideo = v2Videos?.[0] || null;
-      }
-
-      if (!restVideo) {
+      if (!restVideo && videoMap.size > 0) {
         const firstViseme = Array.from(videoMap.keys())[0];
         restVideo = videoMap.get(firstViseme)?.[0] || null;
       }
@@ -166,7 +166,15 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       });
       videoElementsRef.current.clear();
     };
-  }, [clips, project?.restPositionClipUrl]);
+  }, [clips, project?.restPositionClipUrl, playbackSpeed]);
+
+  useEffect(() => {
+    videoElementsRef.current.forEach(videos => {
+      videos.forEach(video => {
+        video.playbackRate = playbackSpeed[0];
+      });
+    });
+  }, [playbackSpeed]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -248,41 +256,40 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     };
   }, [removeGreenScreen]);
 
+  const playRestPosition = () => {
+    const restClipUrl = project?.restPositionClipUrl;
+    let restVideo: HTMLVideoElement | null = null;
+
+    if (restClipUrl) {
+      for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
+        restVideo = vids.find((v: HTMLVideoElement) => v.src.includes(restClipUrl)) || null;
+        if (restVideo) break;
+      }
+    }
+
+    if (!restVideo && videoElementsRef.current.size > 0) {
+      const firstViseme = Array.from(videoElementsRef.current.keys())[0];
+      restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
+    }
+
+    if (restVideo && activeVideoRef.current !== restVideo) {
+      if (activeVideoRef.current) {
+        activeVideoRef.current.pause();
+        activeVideoRef.current.loop = false;
+      }
+      activeVideoRef.current = restVideo;
+      restVideo.loop = true;
+      restVideo.currentTime = 0;
+      restVideo.play().catch(console.error);
+    }
+  };
+
   useEffect(() => {
     const switchVideo = () => {
       const videos = videoElementsRef.current.get(currentViseme);
       
       if (!videos || videos.length === 0) {
-        const restClipUrl = project?.restPositionClipUrl;
-        let restVideo: HTMLVideoElement | null = null;
-
-        if (restClipUrl) {
-          for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
-            restVideo = vids.find((v: HTMLVideoElement) => v.src.endsWith(restClipUrl)) || null;
-            if (restVideo) break;
-          }
-        }
-
-        if (!restVideo) {
-          const v2Videos = videoElementsRef.current.get("V2");
-          restVideo = v2Videos?.[0] || null;
-        }
-
-        if (!restVideo) {
-          const firstViseme = Array.from(videoElementsRef.current.keys())[0];
-          restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
-        }
-
-        if (restVideo && activeVideoRef.current !== restVideo) {
-          if (activeVideoRef.current) {
-            activeVideoRef.current.pause();
-            activeVideoRef.current.loop = false;
-          }
-          activeVideoRef.current = restVideo;
-          restVideo.loop = true;
-          restVideo.currentTime = 0;
-          restVideo.play().catch(console.error);
-        }
+        playRestPosition();
         return;
       }
 
@@ -302,7 +309,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
       nextVideo.onended = () => {
         if (!isRecording && !isProcessing) {
-          setCurrentViseme("V2");
+          playRestPosition();
         }
       };
     };
@@ -312,11 +319,13 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
   const playVisemeSequence = (timeline: PhonemeSegment[]) => {
     let index = 0;
+    const baseInterval = 150 / playbackSpeed[0];
+    
     const interval = setInterval(() => {
       if (index >= timeline.length) {
         clearInterval(interval);
         setIsProcessing(false);
-        setCurrentViseme("V2");
+        playRestPosition();
         return;
       }
       
@@ -325,7 +334,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       setLatency(newLatency);
       onLatencyChange?.(newLatency);
       index++;
-    }, 150);
+    }, baseInterval);
   };
 
   useEffect(() => {
@@ -376,6 +385,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         audioContextRef.current.close();
         audioContextRef.current = null;
       }
+      
+      playRestPosition();
       return;
     }
 
@@ -407,9 +418,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
         
-        if (average > 20) {
+        if (average > micSensitivity[0]) {
           lastSoundTimeRef.current = Date.now();
-          const visemeKeys = Object.keys(VISEME_MAP);
+          const visemeKeys = Object.keys(VISEME_MAP) as Array<keyof typeof VISEME_MAP>;
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
           setCurrentViseme(randomViseme);
           
@@ -417,7 +428,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           setLatency(newLatency);
           onLatencyChange?.(newLatency);
         } else if (Date.now() - lastSoundTimeRef.current > 500) {
-          setCurrentViseme("V2");
+          playRestPosition();
           setLatency(0);
           onLatencyChange?.(0);
         }
@@ -499,6 +510,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     });
   };
 
+  const handleManualTrigger = (visemeId: string) => {
+    if (isProcessing) return;
+    setCurrentViseme(visemeId);
+  };
+
   const getLatencyColor = () => {
     if (latency < 300) return "hsl(var(--chart-2))";
     if (latency < 500) return "hsl(var(--chart-3))";
@@ -553,6 +569,44 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             </div>
 
             <div className="space-y-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Playback Speed: {playbackSpeed[0].toFixed(1)}x</Label>
+                </div>
+                <Slider
+                  value={playbackSpeed}
+                  onValueChange={setPlaybackSpeed}
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  className="w-full"
+                  data-testid="slider-playback-speed"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>0.5x (Slower)</span>
+                  <span>2.0x (Faster)</span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Mic Sensitivity: {micSensitivity[0]}</Label>
+                </div>
+                <Slider
+                  value={micSensitivity}
+                  onValueChange={setMicSensitivity}
+                  min={10}
+                  max={100}
+                  step={5}
+                  className="w-full"
+                  data-testid="slider-mic-sensitivity"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Low (10)</span>
+                  <span>High (100)</span>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between gap-4 p-3 bg-muted rounded-md">
                 <Label htmlFor="remove-greenscreen" className="text-sm cursor-pointer" data-testid="label-remove-greenscreen">
                   Remove Green Screen
@@ -738,6 +792,36 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
           <Card>
             <CardHeader>
+              <CardTitle>Manual Triggers</CardTitle>
+              <CardDescription>Click to manually trigger visemes</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-2">
+                {Object.entries(VISEME_MAP).map(([id, data]) => (
+                  <Button
+                    key={id}
+                    variant={currentViseme === id ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => handleManualTrigger(id)}
+                    disabled={isProcessing}
+                    className="font-mono"
+                    style={currentViseme === id ? {
+                      backgroundColor: data.color,
+                      borderColor: data.color,
+                    } : {
+                      borderColor: data.color,
+                    }}
+                    data-testid={`button-trigger-${id}`}
+                  >
+                    {id}
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Export</CardTitle>
               <CardDescription>Save your avatar configuration</CardDescription>
             </CardHeader>
@@ -760,27 +844,29 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       <Card>
         <CardHeader>
           <CardTitle>Active Visemes Stream</CardTitle>
-          <CardDescription>Real-time phoneme detection</CardDescription>
+          <CardDescription>Simplified 9-viseme system - {Object.keys(VISEME_MAP).length} mouth shapes</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
             {Object.entries(VISEME_MAP).map(([id, data]) => (
-              <Badge
-                key={id}
-                variant={currentViseme === id ? "default" : "outline"}
-                className="font-mono transition-all"
-                style={currentViseme === id ? {
-                  backgroundColor: data.color,
-                  borderColor: data.color,
-                  color: "hsl(var(--primary-foreground))",
-                } : {
-                  borderColor: data.color,
-                  color: data.color,
-                }}
-                data-testid={`viseme-indicator-${id}`}
-              >
-                {id}
-              </Badge>
+              <div key={id} className="flex flex-col items-center gap-1">
+                <Badge
+                  variant={currentViseme === id ? "default" : "outline"}
+                  className="font-mono transition-all"
+                  style={currentViseme === id ? {
+                    backgroundColor: data.color,
+                    borderColor: data.color,
+                    color: "hsl(var(--primary-foreground))",
+                  } : {
+                    borderColor: data.color,
+                    color: data.color,
+                  }}
+                  data-testid={`viseme-indicator-${id}`}
+                >
+                  {id}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{data.example}</span>
+              </div>
             ))}
           </div>
         </CardContent>
