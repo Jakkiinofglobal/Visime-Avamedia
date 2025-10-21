@@ -244,7 +244,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
       if (currentViseme === "V2" || !currentViseme) {
         const restVideo = getRestVideo();
-        if (restVideo && activeVideoRef.current?.src !== restVideo.src) {
+        if (restVideo && activeVideoRef.current !== restVideo) {
           if (activeVideoRef.current) {
             activeVideoRef.current.pause();
             activeVideoRef.current.loop = false;
@@ -253,11 +253,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           restVideo.loop = true;
           restVideo.currentTime = 0;
           restVideo.play().catch(console.error);
-          
-          if (restVideo.src !== currentVideoSrc) {
-            setNextVideoSrc(restVideo.src);
-            lastVisemeSwitchRef.current = now;
-          }
+          setCurrentVideoSrc(restVideo.src);
+          setNextVideoSrc("");
         }
         return;
       }
@@ -300,7 +297,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     };
 
     switchVideo();
-  }, [currentViseme, clips, project?.restPositionClipUrl, currentVideoSrc, MIN_DWELL_MS]);
+  }, [currentViseme, clips, project?.restPositionClipUrl]);
 
   const handleCrossfadeComplete = () => {
     setCurrentVideoSrc(nextVideoSrc);
