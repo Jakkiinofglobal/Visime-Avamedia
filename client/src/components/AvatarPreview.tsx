@@ -180,19 +180,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         restVideo = videoMap.get(firstViseme)?.[0] || null;
       }
 
-      if (restVideo) {
-        console.log("Setting rest pose video:", restVideo.src);
-        activeVideoRef.current = restVideo;
-        restVideo.loop = true;
-        restVideo.currentTime = 0;
-        restVideo.play().catch(console.error);
-        if (restVideo.src) {
-          setCurrentVideoSrc(restVideo.src);
-          setCurrentViseme("V2");
-        }
-      } else {
-        console.error("No rest video found!");
-      }
+      console.log(`Loaded ${loadedCount}/${clips.length} clips`);
+      setCurrentViseme("V2");
     };
 
     preloadClips();
@@ -243,19 +232,13 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       }
 
       if (currentViseme === "V2" || !currentViseme) {
-        const restVideo = getRestVideo();
-        if (restVideo && activeVideoRef.current !== restVideo) {
-          if (activeVideoRef.current) {
-            activeVideoRef.current.pause();
-            activeVideoRef.current.loop = false;
-          }
-          activeVideoRef.current = restVideo;
-          restVideo.loop = true;
-          restVideo.currentTime = 0;
-          restVideo.play().catch(console.error);
-          setCurrentVideoSrc(restVideo.src);
-          setNextVideoSrc("");
+        if (activeVideoRef.current) {
+          activeVideoRef.current.pause();
+          activeVideoRef.current.loop = false;
+          activeVideoRef.current = null;
         }
+        setCurrentVideoSrc("");
+        setNextVideoSrc("");
         return;
       }
 
