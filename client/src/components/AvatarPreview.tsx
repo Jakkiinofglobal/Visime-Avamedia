@@ -50,7 +50,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const isProcessingRef = useRef(false);
   const lastSoundTimeRef = useRef(0);
   const lastVisemeSwitchRef = useRef(0);
-  const MIN_DWELL_MS = 120;
+  const MIN_DWELL_MS = 50;
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -159,9 +159,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       if (restVideo) {
         activeVideoRef.current = restVideo;
         restVideo.loop = true;
+        restVideo.currentTime = 0;
         restVideo.play().catch(console.error);
         if (restVideo.src) {
           setCurrentVideoSrc(restVideo.src);
+          setCurrentViseme("V2");
         }
       }
     };
@@ -180,6 +182,30 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   }, [clips, project?.restPositionClipUrl]);
 
 
+  const getRestVideo = () => {
+    const restClipUrl = project?.restPositionClipUrl;
+    let restVideo: HTMLVideoElement | null = null;
+
+    if (restClipUrl) {
+      for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
+        restVideo = vids.find((v: HTMLVideoElement) => v.src.endsWith(restClipUrl)) || null;
+        if (restVideo) break;
+      }
+    }
+
+    if (!restVideo) {
+      const v2Videos = videoElementsRef.current.get("V2");
+      restVideo = v2Videos?.[0] || null;
+    }
+
+    if (!restVideo) {
+      const firstViseme = Array.from(videoElementsRef.current.keys())[0];
+      restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
+    }
+
+    return restVideo;
+  };
+
   useEffect(() => {
     const switchVideo = () => {
       const now = Date.now();
@@ -189,30 +215,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         return;
       }
 
-      const videos = videoElementsRef.current.get(currentViseme);
-      
-      if (!videos || videos.length === 0) {
-        const restClipUrl = project?.restPositionClipUrl;
-        let restVideo: HTMLVideoElement | null = null;
-
-        if (restClipUrl) {
-          for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
-            restVideo = vids.find((v: HTMLVideoElement) => v.src.endsWith(restClipUrl)) || null;
-            if (restVideo) break;
-          }
-        }
-
-        if (!restVideo) {
-          const v2Videos = videoElementsRef.current.get("V2");
-          restVideo = v2Videos?.[0] || null;
-        }
-
-        if (!restVideo) {
-          const firstViseme = Array.from(videoElementsRef.current.keys())[0];
-          restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
-        }
-
-        if (restVideo && activeVideoRef.current !== restVideo) {
+      if (currentViseme === "V2" || !currentViseme) {
+        const restVideo = getRestVideo();
+        if (restVideo && activeVideoRef.current?.src !== restVideo.src) {
           if (activeVideoRef.current) {
             activeVideoRef.current.pause();
             activeVideoRef.current.loop = false;
@@ -222,7 +227,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           restVideo.currentTime = 0;
           restVideo.play().catch(console.error);
           
-          if (restVideo.src && restVideo.src !== currentVideoSrc) {
+          if (restVideo.src !== currentVideoSrc) {
             setNextVideoSrc(restVideo.src);
             lastVisemeSwitchRef.current = now;
           }
@@ -230,9 +235,20 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         return;
       }
 
+      const videos = videoElementsRef.current.get(currentViseme);
+      
+      if (!videos || videos.length === 0) {
+        setCurrentViseme("V2");
+        return;
+      }
+
       const currentIndex = variantIndexRef.current.get(currentViseme) || 0;
       const nextVideo = videos[currentIndex % videos.length];
       variantIndexRef.current.set(currentViseme, currentIndex + 1);
+
+      if (activeVideoRef.current?.src === nextVideo.src && !activeVideoRef.current.paused) {
+        return;
+      }
 
       if (activeVideoRef.current) {
         activeVideoRef.current.pause();
@@ -244,20 +260,20 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       nextVideo.currentTime = 0;
       nextVideo.play().catch(console.error);
 
-      if (nextVideo.src && nextVideo.src !== currentVideoSrc) {
+      if (nextVideo.src !== currentVideoSrc) {
         setNextVideoSrc(nextVideo.src);
         lastVisemeSwitchRef.current = now;
       }
 
       nextVideo.onended = () => {
-        if (!isRecording && !isProcessing) {
+        if (!isRecordingRef.current && !isProcessingRef.current) {
           setCurrentViseme("V2");
         }
       };
     };
 
     switchVideo();
-  }, [currentViseme, clips, project?.restPositionClipUrl, isRecording, isProcessing, currentVideoSrc, MIN_DWELL_MS]);
+  }, [currentViseme, clips, project?.restPositionClipUrl, currentVideoSrc, MIN_DWELL_MS]);
 
   const handleCrossfadeComplete = () => {
     setCurrentVideoSrc(nextVideoSrc);
@@ -366,17 +382,19 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         
         if (average > micSensitivity) {
           lastSoundTimeRef.current = Date.now();
-          const visemeKeys = Object.keys(VISEME_MAP);
+          const visemeKeys = Object.keys(VISEME_MAP).filter(k => k !== "V2");
           const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
           setCurrentViseme(randomViseme);
           
           const newLatency = Math.floor(Math.random() * 200) + 280;
           setLatency(newLatency);
           onLatencyChange?.(newLatency);
-        } else if (Date.now() - lastSoundTimeRef.current > 500) {
-          setCurrentViseme("V2");
-          setLatency(0);
-          onLatencyChange?.(0);
+        } else if (Date.now() - lastSoundTimeRef.current > 300) {
+          if (currentViseme !== "V2") {
+            setCurrentViseme("V2");
+            setLatency(0);
+            onLatencyChange?.(0);
+          }
         }
         
         audioRafIdRef.current = requestAnimationFrame(checkAudio);
@@ -479,7 +497,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                 currentSrc={currentVideoSrc}
                 nextSrc={nextVideoSrc}
                 onSwapped={handleCrossfadeComplete}
-                fadeMs={120}
+                fadeMs={60}
                 width={1920}
                 height={1080}
                 removeGreenScreen={removeGreenScreen}
