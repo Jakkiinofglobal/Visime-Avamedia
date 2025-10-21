@@ -86,10 +86,11 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
     if (!ctx) return;
 
     const tick = () => {
+      const canvasWidth = width;
+      const canvasHeight = height;
+
       if (!vA.current.paused && phase === "idle") {
         const activeVideo = vA.current;
-        const canvasWidth = width;
-        const canvasHeight = height;
         const videoWidth = activeVideo.videoWidth;
         const videoHeight = activeVideo.videoHeight;
 
@@ -117,6 +118,14 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
         }
 
         processGreenScreen(ctx, activeVideo, drawWidth, drawHeight, offsetX, offsetY);
+      } else {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        if (backgroundImage && removeGreenScreen) {
+          ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
+        } else if (!removeGreenScreen) {
+          ctx.fillStyle = "#00FF00";
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        }
       }
       raf = requestAnimationFrame(tick);
     };
