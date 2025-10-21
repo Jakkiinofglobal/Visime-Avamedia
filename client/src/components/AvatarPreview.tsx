@@ -111,6 +111,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       if (clips.length === 0) return;
 
       const videoMap = new Map<string, HTMLVideoElement[]>();
+      let loadedCount = 0;
+      let failedCount = 0;
 
       for (const clip of clips) {
         const video = document.createElement("video");
@@ -120,18 +122,40 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         video.loop = false;
         video.preload = "auto";
 
-        await new Promise<void>((resolve) => {
-          video.addEventListener("canplay", () => resolve(), { once: true });
-          video.addEventListener("error", () => {
-            console.error(`Failed to load clip: ${clip.clipUrl}`);
-            resolve();
+        const loaded = await new Promise<boolean>((resolve) => {
+          const timeout = setTimeout(() => {
+            console.error(`Timeout loading clip: ${clip.clipUrl}`);
+            resolve(false);
+          }, 10000);
+
+          video.addEventListener("canplay", () => {
+            clearTimeout(timeout);
+            resolve(true);
+          }, { once: true });
+
+          video.addEventListener("error", (e) => {
+            clearTimeout(timeout);
+            console.error(`Failed to load clip: ${clip.clipUrl}`, e);
+            resolve(false);
           }, { once: true });
         });
 
-        if (!videoMap.has(clip.visemeId)) {
-          videoMap.set(clip.visemeId, []);
+        if (loaded) {
+          if (!videoMap.has(clip.visemeId)) {
+            videoMap.set(clip.visemeId, []);
+          }
+          videoMap.get(clip.visemeId)!.push(video);
+          loadedCount++;
+        } else {
+          failedCount++;
         }
-        videoMap.get(clip.visemeId)!.push(video);
+      }
+
+      console.log(`Loaded ${loadedCount}/${clips.length} clips (${failedCount} failed)`);
+
+      if (loadedCount === 0) {
+        console.error("No video clips loaded successfully");
+        return;
       }
 
       videoElementsRef.current = videoMap;
@@ -157,6 +181,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       }
 
       if (restVideo) {
+        console.log("Setting rest pose video:", restVideo.src);
         activeVideoRef.current = restVideo;
         restVideo.loop = true;
         restVideo.currentTime = 0;
@@ -165,6 +190,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           setCurrentVideoSrc(restVideo.src);
           setCurrentViseme("V2");
         }
+      } else {
+        console.error("No rest video found!");
       }
     };
 
@@ -389,8 +416,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           const newLatency = Math.floor(Math.random() * 200) + 280;
           setLatency(newLatency);
           onLatencyChange?.(newLatency);
-        } else if (Date.now() - lastSoundTimeRef.current > 300) {
-          if (currentViseme !== "V2") {
+        } else {
+          const silenceDuration = Date.now() - lastSoundTimeRef.current;
+          if (silenceDuration > 400) {
             setCurrentViseme("V2");
             setLatency(0);
             onLatencyChange?.(0);
