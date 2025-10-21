@@ -11,6 +11,7 @@ import { Slider } from "@/components/ui/slider";
 import { VISEME_MAP, VisemeClip, PhonemeSegment, Project } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import CrossfadeCanvas from "@/components/CrossfadeCanvas";
 
 interface AvatarPreviewProps {
   onExport?: () => void;
@@ -32,12 +33,13 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const [micSensitivity, setMicSensitivity] = useState(25);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [currentVideoSrc, setCurrentVideoSrc] = useState("");
+  const [nextVideoSrc, setNextVideoSrc] = useState("");
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   
   const videoElementsRef = useRef<Map<string, HTMLVideoElement[]>>(new Map());
   const activeVideoRef = useRef<HTMLVideoElement | null>(null);
-  const rafIdRef = useRef<number | null>(null);
   const variantIndexRef = useRef<Map<string, number>>(new Map());
   const backgroundImageRef = useRef<HTMLImageElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -47,6 +49,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const isRecordingRef = useRef(false);
   const isProcessingRef = useRef(false);
   const lastSoundTimeRef = useRef(0);
+  const lastVisemeSwitchRef = useRef(0);
+  const MIN_DWELL_MS = 120;
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -156,6 +160,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         activeVideoRef.current = restVideo;
         restVideo.loop = true;
         restVideo.play().catch(console.error);
+        if (restVideo.src) {
+          setCurrentVideoSrc(restVideo.src);
+        }
       }
     };
 
@@ -172,88 +179,16 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     };
   }, [clips, project?.restPositionClipUrl]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return;
-
-    const render = () => {
-      const activeVideo = activeVideoRef.current;
-      
-      if (activeVideo && activeVideo.readyState >= 2) {
-        const canvasWidth = canvas.width;
-        const canvasHeight = canvas.height;
-        const videoWidth = activeVideo.videoWidth;
-        const videoHeight = activeVideo.videoHeight;
-
-        const canvasAspect = canvasWidth / canvasHeight;
-        const videoAspect = videoWidth / videoHeight;
-
-        let drawWidth, drawHeight, offsetX, offsetY;
-
-        if (canvasAspect > videoAspect) {
-          drawWidth = canvasWidth;
-          drawHeight = canvasWidth / videoAspect;
-          offsetX = 0;
-          offsetY = (canvasHeight - drawHeight) / 2;
-        } else {
-          drawHeight = canvasHeight;
-          drawWidth = canvasHeight * videoAspect;
-          offsetX = (canvasWidth - drawWidth) / 2;
-          offsetY = 0;
-        }
-
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-        if (backgroundImageRef.current && removeGreenScreen) {
-          ctx.drawImage(backgroundImageRef.current, 0, 0, canvasWidth, canvasHeight);
-        }
-
-        if (removeGreenScreen) {
-          const tempCanvas = document.createElement("canvas");
-          tempCanvas.width = videoWidth;
-          tempCanvas.height = videoHeight;
-          const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
-          
-          if (tempCtx) {
-            tempCtx.drawImage(activeVideo, 0, 0);
-            const imageData = tempCtx.getImageData(0, 0, videoWidth, videoHeight);
-            const data = imageData.data;
-
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-
-              if (g > 100 && g > r * 1.5 && g > b * 1.5) {
-                data[i + 3] = 0;
-              }
-            }
-
-            tempCtx.putImageData(imageData, 0, 0);
-            ctx.drawImage(tempCanvas, offsetX, offsetY, drawWidth, drawHeight);
-          }
-        } else {
-          ctx.drawImage(activeVideo, offsetX, offsetY, drawWidth, drawHeight);
-        }
-      }
-
-      rafIdRef.current = requestAnimationFrame(render);
-    };
-
-    rafIdRef.current = requestAnimationFrame(render);
-
-    return () => {
-      if (rafIdRef.current) {
-        cancelAnimationFrame(rafIdRef.current);
-      }
-    };
-  }, [removeGreenScreen]);
 
   useEffect(() => {
     const switchVideo = () => {
+      const now = Date.now();
+      const timeSinceLastSwitch = now - lastVisemeSwitchRef.current;
+      
+      if (timeSinceLastSwitch < MIN_DWELL_MS && currentVideoSrc) {
+        return;
+      }
+
       const videos = videoElementsRef.current.get(currentViseme);
       
       if (!videos || videos.length === 0) {
@@ -286,6 +221,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           restVideo.loop = true;
           restVideo.currentTime = 0;
           restVideo.play().catch(console.error);
+          
+          if (restVideo.src && restVideo.src !== currentVideoSrc) {
+            setNextVideoSrc(restVideo.src);
+            lastVisemeSwitchRef.current = now;
+          }
         }
         return;
       }
@@ -304,6 +244,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       nextVideo.currentTime = 0;
       nextVideo.play().catch(console.error);
 
+      if (nextVideo.src && nextVideo.src !== currentVideoSrc) {
+        setNextVideoSrc(nextVideo.src);
+        lastVisemeSwitchRef.current = now;
+      }
+
       nextVideo.onended = () => {
         if (!isRecording && !isProcessing) {
           setCurrentViseme("V2");
@@ -312,7 +257,12 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     };
 
     switchVideo();
-  }, [currentViseme, clips, project?.restPositionClipUrl, isRecording, isProcessing]);
+  }, [currentViseme, clips, project?.restPositionClipUrl, isRecording, isProcessing, currentVideoSrc, MIN_DWELL_MS]);
+
+  const handleCrossfadeComplete = () => {
+    setCurrentVideoSrc(nextVideoSrc);
+    setNextVideoSrc("");
+  };
 
   const playVisemeSequence = (timeline: PhonemeSegment[]) => {
     let index = 0;
@@ -524,12 +474,16 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             <div className="relative aspect-video rounded-md overflow-hidden border-2" style={{
               backgroundColor: !removeGreenScreen ? "#00FF00" : "#000000",
             }}>
-              <canvas
+              <CrossfadeCanvas
                 ref={canvasRef}
+                currentSrc={currentVideoSrc}
+                nextSrc={nextVideoSrc}
+                onSwapped={handleCrossfadeComplete}
+                fadeMs={120}
                 width={1920}
                 height={1080}
-                className="w-full h-full"
-                data-testid="canvas-preview"
+                removeGreenScreen={removeGreenScreen}
+                backgroundImage={backgroundImageRef.current}
               />
               
               <div className="absolute top-3 right-3 flex items-center gap-2">
