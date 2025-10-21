@@ -107,6 +107,22 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
     },
   });
 
+  const removeRestPoseMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("PATCH", `/api/projects/${projectId}`, {
+        restPositionClipUrl: null,
+      });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Rest position removed",
+        description: "You can now upload a new rest position video",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+    },
+  });
+
   const handleFileSelect = (visemeId: string, file: File) => {
     if (!projectId) return;
     
@@ -177,22 +193,33 @@ export default function VisemeClipUploader({ onContinue, projectId }: VisemeClip
                 <div className="text-sm font-medium">Rest position uploaded</div>
                 <div className="text-xs text-muted-foreground">Avatar will return to this state when idle</div>
               </div>
-              <input
-                type="file"
-                accept="video/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) uploadRestPositionMutation.mutate(file);
-                }}
-                className="hidden"
-                id="replace-rest-position"
-                data-testid="input-replace-rest-position"
-              />
-              <label htmlFor="replace-rest-position">
-                <Button variant="outline" size="sm" asChild data-testid="button-replace-rest-position">
-                  <span>Replace</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadRestPositionMutation.mutate(file);
+                  }}
+                  className="hidden"
+                  id="replace-rest-position"
+                  data-testid="input-replace-rest-position"
+                />
+                <label htmlFor="replace-rest-position">
+                  <Button variant="outline" size="sm" asChild data-testid="button-replace-rest-position">
+                    <span>Replace</span>
+                  </Button>
+                </label>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => removeRestPoseMutation.mutate()}
+                  data-testid="button-remove-rest-position"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Remove
                 </Button>
-              </label>
+              </div>
             </div>
           )}
         </CardContent>
