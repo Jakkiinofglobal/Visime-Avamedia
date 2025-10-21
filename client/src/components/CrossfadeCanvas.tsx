@@ -134,7 +134,11 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
   }, [phase, width, height, removeGreenScreen, backgroundImage]);
 
   useEffect(() => {
-    if (!currentSrc) return;
+    if (!currentSrc) {
+      vA.current.pause();
+      vA.current.src = "";
+      return;
+    }
     vA.current.src = currentSrc;
     vA.current.oncanplay = () => vA.current.play().catch(console.error);
   }, [currentSrc]);

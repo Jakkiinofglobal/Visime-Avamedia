@@ -133,9 +133,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             resolve(true);
           }, { once: true });
 
-          video.addEventListener("error", (e) => {
+          video.addEventListener("error", () => {
             clearTimeout(timeout);
-            console.error(`Failed to load clip: ${clip.clipUrl}`, e);
             resolve(false);
           }, { once: true });
         });
