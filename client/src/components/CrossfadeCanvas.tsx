@@ -124,7 +124,7 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [phase, width, height, removeGreenScreen, backgroundImage]);
+  }, [phase, width, height, removeGreenScreen, backgroundImage, currentSrc]);
 
   useEffect(() => {
     if (!currentSrc) {
