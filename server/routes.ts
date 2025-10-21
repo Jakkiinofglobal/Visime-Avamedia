@@ -2,7 +2,7 @@ import express, { type Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import { insertProjectSchema, insertVisemeClipSchema, VISEME_MAP } from "@shared/schema";
+import { insertProjectSchema, insertVisemeClipSchema, getVisemeMap } from "@shared/schema";
 import { z } from "zod";
 import { v2 as cloudinary } from "cloudinary";
 import { CloudinaryStorage } from "multer-storage-cloudinary";
@@ -31,19 +31,19 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 } // 100MB limit
 });
 
-// Simple phoneme-to-viseme mapper using the new 9-viseme system
-function phonemeToViseme(phoneme: string): string {
+// Phoneme-to-viseme mapper that supports all three complexity levels
+function phonemeToViseme(phoneme: string, complexity: number): string {
   const lowerPhoneme = phoneme.toLowerCase();
+  const visemeMap = getVisemeMap(complexity);
   
-  for (const [visemeId, data] of Object.entries(VISEME_MAP)) {
+  for (const [visemeId, data] of Object.entries(visemeMap)) {
     if ((data.phonemes as readonly string[]).includes(lowerPhoneme)) {
       return visemeId;
     }
   }
   
-  // Default to Baa (closed/rest position) for unmapped phonemes
-  // This includes silence markers and unknown phonemes
-  return "Baa";
+  // Default to first available viseme (Baa for 3 and 9, V1 for 14)
+  return complexity === 14 ? "V2" : "Baa";
 }
 
 // Basic grapheme-to-phoneme converter (simplified)
@@ -245,12 +245,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "visemeId is required" });
       }
 
-      // Validate that visemeId is one of the new 9-viseme categories
-      // This prevents legacy V1-V14 IDs from being uploaded
-      const validVisemeIds = Object.keys(VISEME_MAP);
+      // Get project to validate viseme ID against the project's complexity level
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      // Validate that visemeId matches the project's complexity level
+      const validVisemeIds = Object.keys(getVisemeMap(project.visemeComplexity));
       if (!validVisemeIds.includes(visemeId)) {
         return res.status(400).json({ 
-          error: `Invalid visemeId. Must be one of: ${validVisemeIds.join(", ")}` 
+          error: `Invalid visemeId for ${project.visemeComplexity}-viseme project. Must be one of: ${validVisemeIds.join(", ")}` 
         });
       }
 
@@ -298,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Text to viseme timeline
   app.post("/api/text-to-visemes", async (req, res) => {
     try {
-      const { text } = req.body;
+      const { text, complexity = 3 } = req.body;
       
       if (!text) {
         return res.status(400).json({ error: "Text is required" });
@@ -310,7 +315,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const avgDuration = 0.15; // Average phoneme duration
 
       for (const phoneme of phonemes) {
-        const viseme = phonemeToViseme(phoneme);
+        const viseme = phonemeToViseme(phoneme, complexity);
         timeline.push({
           phoneme,
           start: currentTime,
