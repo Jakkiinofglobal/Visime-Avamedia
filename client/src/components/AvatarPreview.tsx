@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Mic, Square, Play, Download, Copy, Upload, Image as ImageIcon } from "lucide-react";
+import { Mic, Square, Play, Download, Copy, Upload, Image as ImageIcon, Gauge } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { VISEME_MAP, VisemeClip, PhonemeSegment, Project } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +29,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [isProcessing, setIsProcessing] = useState(false);
   const [virtualCameraActive, setVirtualCameraActive] = useState(false);
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   
@@ -312,6 +314,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
   const playVisemeSequence = (timeline: PhonemeSegment[]) => {
     let index = 0;
+    const baseInterval = 150;
+    const adjustedInterval = baseInterval / playbackSpeed;
     const interval = setInterval(() => {
       if (index >= timeline.length) {
         clearInterval(interval);
@@ -325,7 +329,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       setLatency(newLatency);
       onLatencyChange?.(newLatency);
       index++;
-    }, 150);
+    }, adjustedInterval);
   };
 
   useEffect(() => {
@@ -491,7 +495,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   };
 
   const handleCopyUrl = () => {
-    const url = `${window.location.origin}/stream/avatar-preview`;
+    const url = `${window.location.origin}/stream/avatar-preview/${projectId}`;
     navigator.clipboard.writeText(url);
     toast({
       title: "Copied",
@@ -646,7 +650,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                 <Label className="text-sm">Browser Source URL (for OBS)</Label>
                 <div className="flex gap-2">
                   <Input
-                    value={`${window.location.origin}/stream/avatar-preview`}
+                    value={`${window.location.origin}/stream/avatar-preview/${projectId}`}
                     readOnly
                     className="font-mono text-xs"
                     data-testid="input-browser-source-url"
@@ -733,6 +737,31 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                   </div>
                 </div>
               )}
+
+              <div className="space-y-3 pt-4 border-t">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <Gauge className="w-4 h-4 text-muted-foreground" />
+                    <Label className="text-sm">Playback Speed</Label>
+                  </div>
+                  <Badge variant="outline" className="font-mono text-xs" data-testid="badge-playback-speed">
+                    {playbackSpeed.toFixed(1)}x
+                  </Badge>
+                </div>
+                <Slider
+                  value={[playbackSpeed]}
+                  onValueChange={(values) => setPlaybackSpeed(values[0])}
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  className="w-full"
+                  data-testid="slider-playback-speed"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>0.5x (Slower)</span>
+                  <span>2.0x (Faster)</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
