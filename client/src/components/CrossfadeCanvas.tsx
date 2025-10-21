@@ -89,7 +89,16 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
       const canvasWidth = width;
       const canvasHeight = height;
 
-      if (!vA.current.paused && phase === "idle") {
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+
+      if (backgroundImage && removeGreenScreen) {
+        ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
+      } else if (!removeGreenScreen && (!currentSrc || vA.current.paused || vA.current.readyState < 2)) {
+        ctx.fillStyle = "#00FF00";
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      }
+
+      if (!vA.current.paused && vA.current.readyState >= 2 && phase === "idle" && currentSrc) {
         const activeVideo = vA.current;
         const videoWidth = activeVideo.videoWidth;
         const videoHeight = activeVideo.videoHeight;
@@ -111,22 +120,9 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
           offsetY = 0;
         }
 
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-
-        if (backgroundImage && removeGreenScreen) {
-          ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
-        }
-
         processGreenScreen(ctx, activeVideo, drawWidth, drawHeight, offsetX, offsetY);
-      } else {
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        if (backgroundImage && removeGreenScreen) {
-          ctx.drawImage(backgroundImage, 0, 0, canvasWidth, canvasHeight);
-        } else if (!removeGreenScreen) {
-          ctx.fillStyle = "#00FF00";
-          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        }
       }
+
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -136,7 +132,7 @@ const CrossfadeCanvas = forwardRef<HTMLCanvasElement, CrossfadeCanvasProps>((pro
   useEffect(() => {
     if (!currentSrc) {
       vA.current.pause();
-      vA.current.src = "";
+      vA.current.currentTime = 0;
       return;
     }
     vA.current.src = currentSrc;
