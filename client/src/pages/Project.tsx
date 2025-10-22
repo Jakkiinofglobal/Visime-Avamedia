@@ -125,7 +125,7 @@ export default function ProjectPage() {
         <div className="flex-1 overflow-auto">
           <div className="container mx-auto p-6 max-w-7xl">
             <TabsContent value="setup" className="mt-0">
-              <ProjectSetup onComplete={handleSetupComplete} />
+              <ProjectSetup project={currentProject} onComplete={handleSetupComplete} />
             </TabsContent>
 
             <TabsContent value="alignment" className="mt-0">

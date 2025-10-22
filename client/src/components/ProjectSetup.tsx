@@ -1,102 +1,132 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Mic, Square, Loader2 } from "lucide-react";
+import { Mic, Square, Loader2, Check } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { Project } from "@shared/schema";
 
 interface ProjectSetupProps {
-  onComplete?: (config: { name: string; fps: number; resolution: string; visemeComplexity: number }) => void;
+  project: Project;
+  onComplete?: () => void;
 }
 
-export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
-  const [projectName, setProjectName] = useState("My Avatar Project");
-  const [fps, setFps] = useState("30");
-  const [resolution, setResolution] = useState("1920x1080");
-  const [visemeComplexity, setVisemeComplexity] = useState("3");
+export default function ProjectSetup({ project, onComplete }: ProjectSetupProps) {
+  const { toast } = useToast();
   const [isRecording, setIsRecording] = useState(false);
-  const [hasRecording, setHasRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
-  const handleRecord = () => {
-    setIsRecording(true);
-    console.log("Recording started");
-    setTimeout(() => {
+  const uploadAudioMutation = useMutation({
+    mutationFn: async (audioBlob: Blob) => {
+      const formData = new FormData();
+      formData.append("audio", audioBlob, "training-audio.webm");
+      
+      const response = await apiRequest("POST", `/api/projects/${project.id}/training-audio`, formData);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", project.id] });
+      toast({
+        title: "Training audio uploaded",
+        description: "Your training audio has been saved successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Failed to upload training audio",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStartRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        uploadAudioMutation.mutate(audioBlob);
+        
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+
+      toast({
+        title: "Recording started",
+        description: "Say the training sentence clearly",
+      });
+    } catch (error) {
+      toast({
+        title: "Microphone access denied",
+        description: "Please allow microphone access to record",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
       setIsRecording(false);
-      setHasRecording(true);
-      console.log("Recording completed");
-    }, 3000);
+    }
   };
 
   const handleContinue = () => {
-    console.log("Project setup complete", { projectName, fps, resolution, visemeComplexity });
-    onComplete?.({ name: projectName, fps: parseInt(fps), resolution, visemeComplexity: parseInt(visemeComplexity) });
+    onComplete?.();
   };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  const hasTrainingAudio = !!project.trainingAudioUrl;
 
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Project Configuration</CardTitle>
-          <CardDescription>Set up your avatar project parameters</CardDescription>
+          <CardDescription>Your avatar settings</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="project-name" data-testid="label-project-name">Project Name</Label>
-            <Input
-              id="project-name"
-              data-testid="input-project-name"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Enter project name"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="fps" data-testid="label-fps">Frame Rate (FPS)</Label>
-              <Select value={fps} onValueChange={setFps}>
-                <SelectTrigger id="fps" data-testid="select-fps">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="24">24 FPS</SelectItem>
-                  <SelectItem value="30">30 FPS (Recommended)</SelectItem>
-                  <SelectItem value="60">60 FPS</SelectItem>
-                </SelectContent>
-              </Select>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Frame Rate:</span>
+              <p className="font-medium">{project.fps} FPS</p>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="resolution" data-testid="label-resolution">Resolution</Label>
-              <Select value={resolution} onValueChange={setResolution}>
-                <SelectTrigger id="resolution" data-testid="select-resolution">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1920x1080">1920×1080 (Full HD)</SelectItem>
-                  <SelectItem value="1280x720">1280×720 (HD)</SelectItem>
-                  <SelectItem value="3840x2160">3840×2160 (4K)</SelectItem>
-                </SelectContent>
-              </Select>
+            <div>
+              <span className="text-muted-foreground">Resolution:</span>
+              <p className="font-medium">{project.resolution}</p>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="complexity" data-testid="label-complexity">Viseme Complexity</Label>
-            <Select value={visemeComplexity} onValueChange={setVisemeComplexity}>
-              <SelectTrigger id="complexity" data-testid="select-complexity">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="3">3 Visemes (Simple - Baa, Maa, Ohh)</SelectItem>
-                <SelectItem value="9">9 Visemes (Medium Detail)</SelectItem>
-                <SelectItem value="14">14 Visemes (Full Detail)</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Choose how many mouth shapes to record. 3 is fastest, 14 is most realistic.
-            </p>
+            <div>
+              <span className="text-muted-foreground">Viseme Complexity:</span>
+              <p className="font-medium">{project.visemeComplexity || 3} visemes</p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -114,19 +144,40 @@ export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
             <p className="font-medium">"The quick brown fox jumps over the lazy dog."</p>
           </div>
 
-          {!hasRecording ? (
+          {hasTrainingAudio && !isRecording && !uploadAudioMutation.isPending ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-md">
+                <Check className="w-4 h-4 text-green-500" />
+                <span className="text-sm font-medium">Training audio recorded</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleStartRecording}
+                data-testid="button-re-record"
+              >
+                <Mic className="w-4 h-4 mr-2" />
+                Re-record
+              </Button>
+            </div>
+          ) : (
             <Button
               size="lg"
               variant={isRecording ? "destructive" : "default"}
               className="w-full"
-              onClick={handleRecord}
-              disabled={isRecording}
+              onClick={isRecording ? handleStopRecording : handleStartRecording}
+              disabled={uploadAudioMutation.isPending}
               data-testid="button-record-training"
             >
-              {isRecording ? (
+              {uploadAudioMutation.isPending ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Recording...
+                  Uploading...
+                </>
+              ) : isRecording ? (
+                <>
+                  <Square className="w-4 h-4 mr-2" />
+                  Stop Recording
                 </>
               ) : (
                 <>
@@ -135,28 +186,13 @@ export default function ProjectSetup({ onComplete }: ProjectSetupProps) {
                 </>
               )}
             </Button>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 p-3 bg-chart-2/10 border border-chart-2/20 rounded-md">
-                <div className="w-2 h-2 rounded-full bg-chart-2" />
-                <span className="text-sm font-medium">Recording complete (3.2s)</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setHasRecording(false)}
-                data-testid="button-re-record"
-              >
-                Re-record
-              </Button>
-            </div>
           )}
 
           <Button
             size="lg"
             className="w-full"
             onClick={handleContinue}
-            disabled={!hasRecording}
+            disabled={!hasTrainingAudio}
             data-testid="button-continue-setup"
           >
             Continue to Phoneme Alignment
