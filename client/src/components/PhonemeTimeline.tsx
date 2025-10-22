@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ export default function PhonemeTimeline({ segments, duration = 3.2, onContinue, 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const { toast } = useToast();
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   
   const visemeMap = getVisemeMap(project?.visemeComplexity || 3);
 
@@ -56,13 +58,71 @@ export default function PhonemeTimeline({ segments, duration = 3.2, onContinue, 
     }
   };
 
+  // Initialize audio element when training audio URL is available
+  useEffect(() => {
+    if (project?.trainingAudioUrl && !audioRef.current) {
+      const audio = new Audio(project.trainingAudioUrl);
+      audioRef.current = audio;
+
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+      });
+
+      audio.addEventListener('loadedmetadata', () => {
+        // Update duration from actual audio if different
+        console.log('Audio loaded, duration:', audio.duration);
+      });
+    }
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [project?.trainingAudioUrl]);
+
+  // Sync currentTime with audio playback
+  useEffect(() => {
+    const updateTime = () => {
+      if (audioRef.current && isPlaying) {
+        setCurrentTime(audioRef.current.currentTime);
+        animationFrameRef.current = requestAnimationFrame(updateTime);
+      }
+    };
+
+    if (isPlaying) {
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    } else if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, [isPlaying]);
+
   const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-    console.log(isPlaying ? "Paused" : "Playing");
+    if (!audioRef.current) return;
+
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play();
+      setIsPlaying(true);
+    }
   };
 
   const handleSeek = (value: number[]) => {
-    setCurrentTime(value[0]);
+    const newTime = value[0];
+    setCurrentTime(newTime);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    }
   };
 
   return (

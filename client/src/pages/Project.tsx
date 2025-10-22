@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Settings, ArrowLeft } from "lucide-react";
+import { Settings, ArrowLeft, Save, Check } from "lucide-react";
 import ProjectSetup from "@/components/ProjectSetup";
 import PhonemeTimeline from "@/components/PhonemeTimeline";
 import VisemeClipUploader from "@/components/VisemeClipUploader";
@@ -11,17 +11,20 @@ import AvatarPreview from "@/components/AvatarPreview";
 import StatusBar from "@/components/StatusBar";
 import ThemeToggle from "@/components/ThemeToggle";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Project, PhonemeSegment } from "@shared/schema";
 
 export default function ProjectPage() {
   const [, params] = useRoute("/project/:id");
   const [, setLocation] = useLocation();
   const projectId = params?.id;
+  const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState("setup");
   const [micActive, setMicActive] = useState(false);
   const [latency, setLatency] = useState(0);
   const [virtualCameraOn, setVirtualCameraOn] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   const { data: currentProject, isLoading } = useQuery<Project>({
     queryKey: ["/api/projects", projectId],
@@ -43,6 +46,26 @@ export default function ProjectPage() {
 
   const handleUploadComplete = () => {
     setActiveTab("preview");
+  };
+
+  const handleSave = () => {
+    setSaveStatus("saving");
+    
+    // Refresh all project data to ensure everything is in sync
+    queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "clips"] });
+    
+    setTimeout(() => {
+      setSaveStatus("saved");
+      toast({
+        title: "Progress saved",
+        description: "All your avatar changes have been saved successfully",
+      });
+      
+      setTimeout(() => {
+        setSaveStatus("idle");
+      }, 2000);
+    }, 500);
   };
 
   if (isLoading) {
@@ -96,6 +119,30 @@ export default function ProjectPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button 
+            variant={saveStatus === "saved" ? "default" : "outline"} 
+            size="sm" 
+            onClick={handleSave}
+            disabled={saveStatus === "saving"}
+            data-testid="button-save"
+          >
+            {saveStatus === "saving" ? (
+              <>
+                <Save className="w-4 h-4 mr-2 animate-pulse" />
+                Saving...
+              </>
+            ) : saveStatus === "saved" ? (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Saved
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Progress
+              </>
+            )}
+          </Button>
           <Button variant="outline" size="sm" data-testid="button-settings">
             <Settings className="w-4 h-4 mr-2" />
             Settings

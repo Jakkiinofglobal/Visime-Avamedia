@@ -518,6 +518,30 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
     setCurrentViseme(visemeId);
   };
 
+  const handleRestTrigger = () => {
+    if (isProcessing) return;
+    playRestPosition();
+  };
+
+  // Space bar hotkey for Rest position (only when not typing in inputs)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input field
+      const target = event.target as HTMLElement;
+      const isTyping = target.tagName === 'INPUT' || 
+                      target.tagName === 'TEXTAREA' || 
+                      target.isContentEditable;
+      
+      if (event.code === 'Space' && !isProcessing && !isTyping) {
+        event.preventDefault();
+        handleRestTrigger();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isProcessing]);
+
   const getLatencyColor = () => {
     if (latency < 300) return "hsl(var(--chart-2))";
     if (latency < 500) return "hsl(var(--chart-3))";
@@ -796,9 +820,19 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           <Card>
             <CardHeader>
               <CardTitle>Manual Triggers</CardTitle>
-              <CardDescription>Click to manually trigger visemes</CardDescription>
+              <CardDescription>Click to manually trigger visemes (Press Space for Rest)</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              <Button
+                variant="default"
+                size="lg"
+                onClick={handleRestTrigger}
+                disabled={isProcessing || !project?.restPositionClipUrl}
+                className="w-full font-semibold"
+                data-testid="button-trigger-rest"
+              >
+                Rest Position (Space Bar)
+              </Button>
               <div className="grid grid-cols-3 gap-2">
                 {Object.entries(visemeMap).map(([id, data]) => {
                   const visemeData = data as { label: string; phonemes: readonly string[]; color: string; example?: string };
