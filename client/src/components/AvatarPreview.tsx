@@ -135,8 +135,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         videoMap.get(clip.visemeId)!.push(video);
       }
 
-      videoElementsRef.current = videoMap;
-
+      // Find and add the rest position clip to the video map with key "REST"
       const restClipUrl = project?.restPositionClipUrl;
       let restVideo: HTMLVideoElement | null = null;
 
@@ -152,11 +151,15 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         restVideo = videoMap.get(firstViseme)?.[0] || null;
       }
 
+      // Add the rest video to the map with key "REST"
       if (restVideo) {
+        videoMap.set("REST", [restVideo]);
         activeVideoRef.current = restVideo;
         restVideo.loop = true;
         restVideo.play().catch(console.error);
       }
+
+      videoElementsRef.current = videoMap;
     };
 
     preloadClips();
@@ -307,15 +310,21 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       }
 
       activeVideoRef.current = nextVideo;
-      nextVideo.loop = false;
+      
+      // REST position should loop, all other visemes should play once
+      const shouldLoop = currentViseme === "REST";
+      nextVideo.loop = shouldLoop;
       nextVideo.currentTime = 0;
       nextVideo.play().catch(console.error);
 
-      nextVideo.onended = () => {
-        if (!isRecording && !isProcessing) {
-          playRestPosition();
-        }
-      };
+      // Only set onended handler for non-looping videos
+      if (!shouldLoop) {
+        nextVideo.onended = () => {
+          if (!isRecording && !isProcessing) {
+            setCurrentViseme("REST");
+          }
+        };
+      }
     };
 
     switchVideo();
