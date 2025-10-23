@@ -434,22 +434,29 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             const midFreq = dataArray.slice(dataArray.length / 3, 2 * dataArray.length / 3).reduce((a, b) => a + b) / (dataArray.length / 3);
             const highFreq = dataArray.slice(2 * dataArray.length / 3).reduce((a, b) => a + b) / (dataArray.length / 3);
             
-            let selectedViseme = 'Ohh'; // Default fallback
             const visemeKeys = Object.keys(visemeMap);
+            let selectedViseme = visemeKeys[0]; // Default to first available viseme
             
             // Map frequency patterns to visemes for more realistic lip-sync
+            // Only use visemes that actually exist in the current project
             if (highFreq > lowFreq && highFreq > midFreq) {
               // High frequencies - sibilants and front vowels
               const highVisemes = visemeKeys.filter(v => ['Mee', 'Shhh', 'Foe', 'Wuh'].includes(v));
-              selectedViseme = highVisemes[Math.floor(Math.random() * highVisemes.length)] || 'Mee';
+              if (highVisemes.length > 0) {
+                selectedViseme = highVisemes[Math.floor(Math.random() * highVisemes.length)];
+              }
             } else if (midFreq > lowFreq && midFreq > highFreq) {
               // Mid frequencies - consonants
               const midVisemes = visemeKeys.filter(v => ['Tie', 'Baa', 'Ayy', 'Loo'].includes(v));
-              selectedViseme = midVisemes[Math.floor(Math.random() * midVisemes.length)] || 'Ayy';
+              if (midVisemes.length > 0) {
+                selectedViseme = midVisemes[Math.floor(Math.random() * midVisemes.length)];
+              }
             } else {
               // Low frequencies - open vowels
-              const lowVisemes = visemeKeys.filter(v => ['Ohh', 'Ayy', 'Loo'].includes(v));
-              selectedViseme = lowVisemes[Math.floor(Math.random() * lowVisemes.length)] || 'Ohh';
+              const lowVisemes = visemeKeys.filter(v => ['Ohh', 'Ayy', 'Loo', 'Maa'].includes(v));
+              if (lowVisemes.length > 0) {
+                selectedViseme = lowVisemes[Math.floor(Math.random() * lowVisemes.length)];
+              }
             }
             
             setCurrentViseme(selectedViseme);
@@ -797,11 +804,12 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                 />
                 <Button
                   className="w-full"
+                  size="sm"
                   onClick={handleTextProcess}
                   disabled={!testText.trim() || isProcessing}
                   data-testid="button-process-text"
                 >
-                  <Play className="w-4 h-4 mr-2" />
+                  <Play className="w-3 h-3 mr-2" />
                   {isProcessing ? "Processing..." : "Process Text"}
                 </Button>
               </div>
@@ -816,7 +824,6 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               </div>
 
               <Button
-                size="lg"
                 variant={isRecording ? "destructive" : "default"}
                 className="w-full"
                 onClick={handleMicToggle}
@@ -824,12 +831,12 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               >
                 {isRecording ? (
                   <>
-                    <Square className="w-4 h-4 mr-2" />
+                    <Square className="w-3 h-3 mr-2" />
                     Stop Recording
                   </>
                 ) : (
                   <>
-                    <Mic className="w-4 h-4 mr-2" />
+                    <Mic className="w-3 h-3 mr-2" />
                     Start Live Microphone
                   </>
                 )}
@@ -854,7 +861,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
             <CardContent className="space-y-3">
               <Button
                 variant="default"
-                size="lg"
+                size="sm"
                 onClick={handleRestTrigger}
                 disabled={isProcessing || !project?.restPositionClipUrl}
                 className="w-full font-semibold"
