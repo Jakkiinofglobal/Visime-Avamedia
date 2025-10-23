@@ -24,7 +24,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const [testText, setTestText] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [removeGreenScreen, setRemoveGreenScreen] = useState(false);
-  const [currentViseme, setCurrentViseme] = useState("Baa");
+  const [currentViseme, setCurrentViseme] = useState("REST");
   const [latency, setLatency] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [virtualCameraActive, setVirtualCameraActive] = useState(false);
@@ -329,7 +329,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       if (index >= timeline.length) {
         clearInterval(interval);
         setIsProcessing(false);
-        playRestPosition();
+        setCurrentViseme("REST");
         return;
       }
       
@@ -390,7 +390,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         audioContextRef.current = null;
       }
       
-      playRestPosition();
+      setCurrentViseme("REST");
       return;
     }
 
@@ -467,7 +467,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           setLatency(newLatency);
           onLatencyChange?.(newLatency);
         } else if (Date.now() - lastSoundTimeRef.current > 500) {
-          playRestPosition();
+          setCurrentViseme("REST");
           setLatency(0);
           onLatencyChange?.(0);
         }
@@ -556,7 +556,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
 
   const handleRestTrigger = () => {
     if (isProcessing) return;
-    playRestPosition();
+    setCurrentViseme("REST");
   };
 
   // Space bar hotkey for Rest position (only when not typing in inputs)
@@ -585,14 +585,14 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div className="space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Video Preview</CardTitle>
             <CardDescription>Real-time avatar output</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-2">
             <div className="relative aspect-video rounded-md overflow-hidden border-2" style={{
               backgroundColor: !removeGreenScreen ? "#00FF00" : "#000000",
             }}>
@@ -631,8 +631,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               </div>
             </div>
 
-            <div className="space-y-3">
-              <div className="space-y-2">
+            <div className="space-y-2">
+              <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm">Playback Speed: {playbackSpeed[0].toFixed(1)}x</Label>
                 </div>
@@ -785,15 +785,15 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
+        <div className="space-y-3">
           <Card>
             <CardHeader>
               <CardTitle>Test Input</CardTitle>
               <CardDescription>Test your avatar with text or microphone</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="test-text" data-testid="label-test-text">Type Text to Test</Label>
+            <CardContent className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="test-text" className="text-xs" data-testid="label-test-text">Type Text to Test</Label>
                 <Input
                   id="test-text"
                   data-testid="input-test-text"
@@ -814,7 +814,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                 </Button>
               </div>
 
-              <div className="relative py-4">
+              <div className="relative py-2">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t" />
                 </div>
@@ -843,8 +843,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
               </Button>
 
               {isRecording && (
-                <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-                  <div className="text-sm font-medium text-destructive mb-2">🔴 Live</div>
+                <div className="p-2 bg-destructive/10 border border-destructive/20 rounded-md">
+                  <div className="text-xs font-medium text-destructive mb-1">🔴 Live</div>
                   <div className="text-xs text-muted-foreground">
                     Speak into your microphone to see real-time viseme sequencing
                   </div>
@@ -854,11 +854,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Manual Triggers</CardTitle>
-              <CardDescription>Click to manually trigger visemes (Press Space for Rest)</CardDescription>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Manual Triggers</CardTitle>
+              <CardDescription className="text-xs">Click to manually trigger visemes (Press Space for Rest)</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2">
               <Button
                 variant="default"
                 size="sm"
@@ -879,7 +879,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
                       size="sm"
                       onClick={() => handleManualTrigger(id)}
                       disabled={isProcessing}
-                      className="font-mono"
+                      className="font-mono text-xs h-7"
                       style={currentViseme === id ? {
                         backgroundColor: visemeData.color,
                         borderColor: visemeData.color,
@@ -897,11 +897,11 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
           </Card>
 
           <Card>
-            <CardHeader>
-              <CardTitle>Export</CardTitle>
-              <CardDescription>Save your avatar configuration</CardDescription>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Export</CardTitle>
+              <CardDescription className="text-xs">Save your avatar configuration</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2">
+            <CardContent>
               <Button
                 variant="outline"
                 className="w-full"
