@@ -48,6 +48,15 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const isProcessingRef = useRef(false);
   const lastSoundTimeRef = useRef(0);
   const lastVisemeChangeTimeRef = useRef(0);
+  const lastPlayedIdRef = useRef<string>("REST");
+  const ranPreloadRef = useRef(false);
+
+  // Helper to ensure we don't replay the same viseme twice
+  function shouldSwitchTo(id: string) {
+    if (id === lastPlayedIdRef.current) return false;
+    lastPlayedIdRef.current = id;
+    return true;
+  }
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -107,6 +116,9 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   }, [project?.backgroundImageUrl]);
 
   useEffect(() => {
+    if (ranPreloadRef.current) return; // StrictMode guard
+    ranPreloadRef.current = true;
+
     const preloadClips = async () => {
       if (clips.length === 0) return;
 
@@ -135,31 +147,41 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         videoMap.get(clip.visemeId)!.push(video);
       }
 
-      // Find and add the rest position clip to the video map with key "REST"
-      const restClipUrl = project?.restPositionClipUrl;
-      let restVideo: HTMLVideoElement | null = null;
+      // Dedicated REST element (no reuse & no autoplay here)
+      const configuredRestUrl = project?.restPositionClipUrl;
+      const fallbackFirstSrc = (() => {
+        const firstList = videoMap.size ? videoMap.values().next().value as HTMLVideoElement[] : null;
+        return firstList?.[0]?.src ?? null;
+      })();
+      const restSrc = configuredRestUrl ?? fallbackFirstSrc;
 
-      if (restClipUrl) {
-        for (const [visemeId, videos] of Array.from(videoMap.entries())) {
-          restVideo = videos.find((v: HTMLVideoElement) => v.src.includes(restClipUrl)) || null;
-          if (restVideo) break;
-        }
-      }
-
-      if (!restVideo && videoMap.size > 0) {
-        const firstViseme = Array.from(videoMap.keys())[0];
-        restVideo = videoMap.get(firstViseme)?.[0] || null;
-      }
-
-      // Add the rest video to the map with key "REST"
-      if (restVideo) {
-        videoMap.set("REST", [restVideo]);
-        activeVideoRef.current = restVideo;
+      if (restSrc) {
+        const restVideo = document.createElement("video");
+        restVideo.src = restSrc;
+        restVideo.crossOrigin = "anonymous";
+        restVideo.muted = true;
+        restVideo.playsInline = true;
         restVideo.loop = true;
-        restVideo.play().catch(console.error);
+        restVideo.preload = "auto";
+        restVideo.playbackRate = playbackSpeed[0];
+
+        await new Promise<void>((resolve) => {
+          restVideo.addEventListener("canplay", () => resolve(), { once: true });
+          restVideo.addEventListener("error", () => {
+            console.error("REST load failed:", restSrc);
+            resolve();
+          }, { once: true });
+        });
+
+        videoMap.set("REST", [restVideo]);
+        // do NOT set activeVideoRef or .play() here — switcher controls playback
       }
 
       videoElementsRef.current = videoMap;
+      
+      // QA logs
+      console.log("REST exists?", videoElementsRef.current.has("REST"));
+      console.log("REST list length:", videoElementsRef.current.get("REST")?.length ?? 0);
     };
 
     preloadClips();
@@ -264,39 +286,37 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   }, [removeGreenScreen]);
 
   const playRestPosition = () => {
-    const restClipUrl = project?.restPositionClipUrl;
-    let restVideo: HTMLVideoElement | null = null;
+    const restVideo = videoElementsRef.current.get("REST")?.[0] || null;
+    if (!restVideo) return;
 
-    if (restClipUrl) {
-      for (const [visemeId, vids] of Array.from(videoElementsRef.current.entries())) {
-        restVideo = vids.find((v: HTMLVideoElement) => v.src.includes(restClipUrl)) || null;
-        if (restVideo) break;
-      }
+    // if already REST and already playing, don't thrash
+    if (activeVideoRef.current === restVideo && !restVideo.paused) return;
+
+    if (activeVideoRef.current && activeVideoRef.current !== restVideo) {
+      activeVideoRef.current.pause();
+      activeVideoRef.current.onended = null;
+      activeVideoRef.current.loop = false;
     }
 
-    if (!restVideo && videoElementsRef.current.size > 0) {
-      const firstViseme = Array.from(videoElementsRef.current.keys())[0];
-      restVideo = videoElementsRef.current.get(firstViseme)?.[0] || null;
-    }
-
-    if (restVideo && activeVideoRef.current !== restVideo) {
-      if (activeVideoRef.current) {
-        activeVideoRef.current.pause();
-        activeVideoRef.current.loop = false;
-      }
-      activeVideoRef.current = restVideo;
-      restVideo.loop = true;
-      restVideo.currentTime = 0;
-      restVideo.play().catch(console.error);
-    }
+    activeVideoRef.current = restVideo;
+    lastPlayedIdRef.current = "REST";
+    restVideo.loop = true;
+    restVideo.currentTime = 0;
+    void restVideo.play().catch(console.error);
   };
 
   useEffect(() => {
     const switchVideo = () => {
+      if (currentViseme === "REST") {
+        if (shouldSwitchTo("REST")) playRestPosition();
+        else playRestPosition(); // ensure it's playing
+        return;
+      }
+
       const videos = videoElementsRef.current.get(currentViseme);
-      
       if (!videos || videos.length === 0) {
-        playRestPosition();
+        if (shouldSwitchTo("REST")) playRestPosition();
+        else playRestPosition();
         return;
       }
 
@@ -304,27 +324,23 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       const nextVideo = videos[currentIndex % videos.length];
       variantIndexRef.current.set(currentViseme, currentIndex + 1);
 
+      // prevent replay of same viseme when HMR/StrictMode double-fires
+      if (!shouldSwitchTo(currentViseme)) return;
+
       if (activeVideoRef.current) {
         activeVideoRef.current.pause();
+        activeVideoRef.current.onended = null;
         activeVideoRef.current.loop = false;
       }
 
       activeVideoRef.current = nextVideo;
-      
-      // REST position should loop, all other visemes should play once
-      const shouldLoop = currentViseme === "REST";
-      nextVideo.loop = shouldLoop;
+      nextVideo.loop = false; // non-REST plays once
       nextVideo.currentTime = 0;
-      nextVideo.play().catch(console.error);
+      void nextVideo.play().catch(console.error);
 
-      // Only set onended handler for non-looping videos
-      if (!shouldLoop) {
-        nextVideo.onended = () => {
-          if (!isRecording && !isProcessing) {
-            setCurrentViseme("REST");
-          }
-        };
-      }
+      nextVideo.onended = () => {
+        if (!isRecording && !isProcessing) setCurrentViseme("REST");
+      };
     };
 
     switchVideo();

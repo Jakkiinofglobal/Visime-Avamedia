@@ -1,0 +1,158 @@
+Below are minimal patches you can copy into your existing client/src/components/AvatarPreview.tsx. No other files need to change.
+
+1) Add these refs & helpers at the top (inside the component)
+// put near your other refs
+const lastPlayedIdRef = useRef<string>("REST");
+const ranPreloadRef = useRef(false); // StrictMode guard for preload
+
+Tiny helper to ensure we don’t replay the same viseme twice
+function shouldSwitchTo(id: string) {
+  if (id === lastPlayedIdRef.current) return false; // same as active => ignore
+  lastPlayedIdRef.current = id;
+  return true;
+}
+
+2) Preload effect: don’t autoplay, create a dedicated REST element, and guard StrictMode
+
+Find your preload effect (useEffect(() => { const preloadClips = async () => { ... }})) and make these two edits:
+
+A) StrictMode guard (first lines inside the effect):
+
+useEffect(() => {
+  if (ranPreloadRef.current) return; // ignore the second StrictMode pass
+  ranPreloadRef.current = true;
+  const preloadClips = async () => {
+    // ... your existing preload code ...
+
+
+B) Replace your current “Find and add the rest position clip …” block with a dedicated REST element and do NOT call .play() here:
+
+// --- dedicated REST element (no reuse & no autoplay here)
+const configuredRestUrl = project?.restPositionClipUrl;
+const fallbackFirstSrc = (() => {
+  const firstList = videoMap.size ? videoMap.values().next().value as HTMLVideoElement[] : null;
+  return firstList?.[0]?.src ?? null;
+})();
+const restSrc = configuredRestUrl ?? fallbackFirstSrc;
+
+if (restSrc) {
+  const restVideo = document.createElement("video");
+  restVideo.src = restSrc;
+  restVideo.crossOrigin = "anonymous";
+  restVideo.muted = true;       // autoplay-safe
+  restVideo.playsInline = true; // iOS autoplay-safe
+  restVideo.loop = true;        // only REST loops
+  restVideo.preload = "auto";
+  restVideo.playbackRate = playbackSpeed[0];
+
+  await new Promise<void>((resolve) => {
+    restVideo.addEventListener("canplay", () => resolve(), { once: true });
+    restVideo.addEventListener("error", () => { console.error("REST load failed:", restSrc); resolve(); }, { once: true });
+  });
+
+  videoMap.set("REST", [restVideo]);    // critical: fixed key
+  // do NOT set activeVideoRef or .play() here — switcher controls playback
+}
+
+
+(Keep the rest of your preload intact. At the very end you still assign videoElementsRef.current = videoMap;)
+
+3) Replace your playRestPosition() with this exact version
+function playRestPosition() {
+  const restVideo = videoElementsRef.current.get("REST")?.[0] || null;
+  if (!restVideo) return;
+
+  // if already REST and already playing, don’t thrash
+  if (activeVideoRef.current === restVideo && !restVideo.paused) return;
+
+  if (activeVideoRef.current && activeVideoRef.current !== restVideo) {
+    activeVideoRef.current.pause();
+    activeVideoRef.current.onended = null;
+    activeVideoRef.current.loop = false;
+  }
+
+  activeVideoRef.current = restVideo;
+  lastPlayedIdRef.current = "REST";
+  restVideo.loop = true;
+  restVideo.currentTime = 0;
+  void restVideo.play().catch(console.error);
+}
+
+4) In the effect that defines switchVideo, replace the body of switchVideo with:
+const switchVideo = () => {
+  if (currentViseme === "REST") {
+    if (shouldSwitchTo("REST")) playRestPosition();
+    else playRestPosition(); // ensure it’s playing
+    return;
+  }
+
+  const videos = videoElementsRef.current.get(currentViseme);
+  if (!videos || videos.length === 0) {
+    if (shouldSwitchTo("REST")) playRestPosition();
+    else playRestPosition();
+    return;
+  }
+
+  const currentIndex = variantIndexRef.current.get(currentViseme) || 0;
+  const nextVideo = videos[currentIndex % videos.length];
+  variantIndexRef.current.set(currentViseme, currentIndex + 1);
+
+  // prevent replay of same viseme when HMR/StrictMode double-fires
+  if (!shouldSwitchTo(currentViseme)) return;
+
+  if (activeVideoRef.current) {
+    activeVideoRef.current.pause();
+    activeVideoRef.current.onended = null;
+    activeVideoRef.current.loop = false;
+  }
+
+  activeVideoRef.current = nextVideo;
+  nextVideo.loop = false;      // non-REST plays once
+  nextVideo.currentTime = 0;
+  void nextVideo.play().catch(console.error);
+
+  nextVideo.onended = () => {
+    if (!isRecording && !isProcessing) setCurrentViseme("REST");
+  };
+};
+
+5) Two tiny QA logs (optional, super helpful)
+
+Right after videoElementsRef.current = videoMap; in preload:
+
+console.log("REST exists?", videoElementsRef.current.has("REST"));
+console.log("REST list length:", videoElementsRef.current.get("REST")?.length ?? 0);
+
+
+When the badge says REST, those should be true and 1.
+
+6) Run in a stable mode on Replit (no HMR thrash)
+
+Option A (best to sanity-check):
+
+npm run build
+npm run preview
+
+
+Open the preview URL. If REST is smooth here, you’ve proven the dev/HMR double-run was the cause.
+
+Option B (dev but calmer): temporarily comment out StrictMode in main.tsx.
+
+// import { StrictMode } from 'react';
+// <StrictMode>
+  <App />
+// </StrictMode>
+
+Why this will fix your case (even on Replit)
+
+No autoplay in preload (avoids HMR races).
+
+REST is a dedicated element under key "REST" — never searched by URL.
+
+We clear onended on the old clip before switching.
+
+We keep a lastPlayedIdRef so the same viseme isn’t re-triggered if StrictMode/HMR double-invokes an effect.
+
+muted + playsInline ensures autoplay works in all browsers.
+
+If you want, I can still generate a fully assembled AvatarPreview_fixed.tsx you can drop in and import temporarily — but the patches above are the smallest changes to your current file and should stop the loop immediately.
