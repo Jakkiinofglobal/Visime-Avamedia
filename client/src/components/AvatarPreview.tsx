@@ -47,6 +47,7 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
   const isRecordingRef = useRef(false);
   const isProcessingRef = useRef(false);
   const lastSoundTimeRef = useRef(0);
+  const lastVisemeChangeTimeRef = useRef(0);
 
   const { data: clips = [] } = useQuery<VisemeClip[]>({
     queryKey: ["/api/projects", projectId, "clips"],
@@ -410,6 +411,8 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
       onMicStatusChange?.(true);
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const minVisemeChangeDuration = 100; // Minimum time between viseme changes
+      
       const checkAudio = () => {
         if (!isRecordingRef.current) return;
         
@@ -423,9 +426,35 @@ export default function AvatarPreview({ onExport, projectId, onMicStatusChange, 
         
         if (average > micSensitivity[0]) {
           lastSoundTimeRef.current = Date.now();
-          const visemeKeys = Object.keys(visemeMap);
-          const randomViseme = visemeKeys[Math.floor(Math.random() * visemeKeys.length)];
-          setCurrentViseme(randomViseme);
+          
+          // Analyze frequency distribution to pick appropriate viseme
+          const now = Date.now();
+          if (now - lastVisemeChangeTimeRef.current > minVisemeChangeDuration) {
+            const lowFreq = dataArray.slice(0, dataArray.length / 3).reduce((a, b) => a + b) / (dataArray.length / 3);
+            const midFreq = dataArray.slice(dataArray.length / 3, 2 * dataArray.length / 3).reduce((a, b) => a + b) / (dataArray.length / 3);
+            const highFreq = dataArray.slice(2 * dataArray.length / 3).reduce((a, b) => a + b) / (dataArray.length / 3);
+            
+            let selectedViseme = 'Ohh'; // Default fallback
+            const visemeKeys = Object.keys(visemeMap);
+            
+            // Map frequency patterns to visemes for more realistic lip-sync
+            if (highFreq > lowFreq && highFreq > midFreq) {
+              // High frequencies - sibilants and front vowels
+              const highVisemes = visemeKeys.filter(v => ['Mee', 'Shhh', 'Foe', 'Wuh'].includes(v));
+              selectedViseme = highVisemes[Math.floor(Math.random() * highVisemes.length)] || 'Mee';
+            } else if (midFreq > lowFreq && midFreq > highFreq) {
+              // Mid frequencies - consonants
+              const midVisemes = visemeKeys.filter(v => ['Tie', 'Baa', 'Ayy', 'Loo'].includes(v));
+              selectedViseme = midVisemes[Math.floor(Math.random() * midVisemes.length)] || 'Ayy';
+            } else {
+              // Low frequencies - open vowels
+              const lowVisemes = visemeKeys.filter(v => ['Ohh', 'Ayy', 'Loo'].includes(v));
+              selectedViseme = lowVisemes[Math.floor(Math.random() * lowVisemes.length)] || 'Ohh';
+            }
+            
+            setCurrentViseme(selectedViseme);
+            lastVisemeChangeTimeRef.current = now;
+          }
           
           const newLatency = Math.floor(Math.random() * 200) + 280;
           setLatency(newLatency);

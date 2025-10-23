@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Settings, ArrowLeft, Save, Check } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Settings, ArrowLeft, Save, Check, Edit2 } from "lucide-react";
 import ProjectSetup from "@/components/ProjectSetup";
 import PhonemeTimeline from "@/components/PhonemeTimeline";
 import VisemeClipUploader from "@/components/VisemeClipUploader";
@@ -25,6 +26,8 @@ export default function ProjectPage() {
   const [latency, setLatency] = useState(0);
   const [virtualCameraOn, setVirtualCameraOn] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
 
   const { data: currentProject, isLoading } = useQuery<Project>({
     queryKey: ["/api/projects", projectId],
@@ -68,6 +71,46 @@ export default function ProjectPage() {
     }, 500);
   };
 
+  const updateNameMutation = useMutation({
+    mutationFn: async (name: string) => {
+      await apiRequest("PATCH", `/api/projects/${projectId}`, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      toast({
+        title: "Avatar renamed",
+        description: "Your avatar name has been updated",
+      });
+      setIsEditingName(false);
+    },
+    onError: () => {
+      toast({
+        title: "Failed to rename avatar",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleNameEdit = () => {
+    setEditedName(currentProject?.name || "");
+    setIsEditingName(true);
+  };
+
+  const handleNameSave = () => {
+    if (editedName.trim() && editedName !== currentProject?.name) {
+      updateNameMutation.mutate(editedName.trim());
+    } else {
+      setIsEditingName(false);
+    }
+  };
+
+  const handleNameCancel = () => {
+    setIsEditingName(false);
+    setEditedName("");
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -108,13 +151,48 @@ export default function ProjectPage() {
             Back to Avatars
           </Button>
           <div className="h-6 w-px bg-border" />
-          <div>
-            <h1 className="text-lg font-bold">
-              {isLoading ? "Loading..." : currentProject?.name || "Unknown Project"}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {currentProject ? `${currentProject.fps} FPS • ${currentProject.resolution}` : "Real-time Video Avatar"}
-            </p>
+          <div className="flex items-center gap-2">
+            {isEditingName ? (
+              <div className="flex items-center gap-2">
+                <Input
+                  value={editedName}
+                  onChange={(e) => setEditedName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleNameSave();
+                    if (e.key === 'Escape') handleNameCancel();
+                  }}
+                  className="h-8 w-64"
+                  autoFocus
+                  data-testid="input-edit-name"
+                />
+                <Button size="sm" onClick={handleNameSave} data-testid="button-save-name">
+                  <Check className="w-3 h-3" />
+                </Button>
+                <Button size="sm" variant="ghost" onClick={handleNameCancel} data-testid="button-cancel-name">
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-lg font-bold">
+                    {isLoading ? "Loading..." : currentProject?.name || "Unknown Project"}
+                  </h1>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-6 w-6" 
+                    onClick={handleNameEdit}
+                    data-testid="button-edit-name"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {currentProject ? `${currentProject.fps} FPS • ${currentProject.resolution}` : "Real-time Video Avatar"}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
